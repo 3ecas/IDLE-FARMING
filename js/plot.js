@@ -1,6 +1,7 @@
 import {
   getCellDragBounds,
   getPlotDisplayLabel,
+  getPlotGrowthProgress,
   getPlotStatusLabel,
   harvestPlot,
   moveFarmPlot,
@@ -81,6 +82,7 @@ export function mountPlot(container) {
           const stage = plot.stage || "empty";
           const nameLabel = getPlotDisplayLabel(plot);
           const statusLabel = getPlotStatusLabel(plot);
+          const growthProgress = getPlotGrowthProgress(plot);
           const ariaLabel = nameLabel ? `Land plot, ${nameLabel}` : "Land plot";
 
           return `
@@ -95,6 +97,15 @@ export function mountPlot(container) {
             >
               <span class="farm-cell__glyph">${getPlotGlyph(plot)}</span>
               ${statusLabel ? `<span class="farm-cell__status farm-cell__status--${stage}">${statusLabel}</span>` : ""}
+              ${
+                stage === "growing"
+                  ? `
+                    <span class="farm-cell__progress" aria-hidden="true">
+                      <span class="farm-cell__progress-fill" style="width:${growthProgress}%"></span>
+                    </span>
+                  `
+                  : ""
+              }
               ${nameLabel ? `<span class="farm-cell__label">${nameLabel}</span>` : ""}
             </button>
           `;

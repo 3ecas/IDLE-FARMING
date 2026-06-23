@@ -3,6 +3,7 @@ import { getCellSize } from "./layout.js";
 
 const listeners = new Set();
 const growthTimers = new Map();
+let growthTicker = null;
 const GRID_SIZE = 24;
 const FARM_PLOT_SIZE = 72;
 const FARM_PLOT_SPAWN_GAP = 0;
@@ -489,6 +490,10 @@ function markPlotMature(plot) {
   plot.stage = FARM_STAGE_MATURE;
   plot.growCompleteAt = null;
   saveFarmPlots(state.farm.plots);
+  if (!hasGrowingPlots() && growthTicker) {
+    window.clearInterval(growthTicker);
+    growthTicker = null;
+  }
   notify();
   return true;
 }
@@ -510,6 +515,7 @@ function schedulePlotGrowth(plot) {
     markPlotMature(plot);
   }, remaining);
   growthTimers.set(plot.id, timerId);
+  ensureGrowthTicker();
 }
 
 function hydratePlotGrowthTimers() {
@@ -521,6 +527,28 @@ function hydratePlotGrowthTimers() {
       plot.growCompleteAt = null;
     }
   }
+
+  ensureGrowthTicker();
+}
+
+function hasGrowingPlots() {
+  return state.farm.plots.some((plot) => plot.stage === FARM_STAGE_GROWING && Number.isFinite(plot.growCompleteAt));
+}
+
+function ensureGrowthTicker() {
+  if (growthTicker || !hasGrowingPlots()) {
+    return;
+  }
+
+  growthTicker = window.setInterval(() => {
+    if (!hasGrowingPlots()) {
+      window.clearInterval(growthTicker);
+      growthTicker = null;
+      return;
+    }
+
+    notify();
+  }, 250);
 }
 
 function saveFarmState() {
@@ -729,6 +757,15 @@ export function moveFarmPlot(plotId, left, top) {
   return true;
 }
 
+export function getPlotGrowthProgress(plot) {
+  if (!plot || plot.stage !== FARM_STAGE_GROWING || !Number.isFinite(plot.growCompleteAt)) {
+    return 0;
+  }
+
+  const remaining = Math.max(0, plot.growCompleteAt - Date.now());
+  return Math.max(0, Math.min(100, Math.round((1 - remaining / FARM_GROWTH_DURATION_MS) * 100)));
+}
+
 export function spawnFarmPlot(preferredPosition = null) {
   const id = `farm-plot-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const plotPosition = createFarmPlotRecord(id, preferredPosition, state.farm.plots);
@@ -788,6 +825,10 @@ export function restartFarm() {
     window.clearTimeout(timerId);
   }
   growthTimers.clear();
+  if (growthTicker) {
+    window.clearInterval(growthTicker);
+    growthTicker = null;
+  }
   saveFarmPlots(state.farm.plots);
   state.barn.items = {};
   state.shopping.items = {};
