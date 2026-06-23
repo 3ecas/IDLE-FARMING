@@ -55,7 +55,10 @@ export function mountMoney(container) {
     container.innerHTML = `
       <section class="money-cell" data-cell-key="money" data-money-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Money">
         <div class="money-header">
-          <span class="money-title">Money</span>
+          <span class="money-title">
+            <span class="money-title__icon" aria-hidden="true">🪙</span>
+            <span class="money-title__text">Money</span>
+          </span>
           <button type="button" class="cell-close" data-close-cell aria-label="Close Money">x</button>
         </div>
         <div class="money-body">

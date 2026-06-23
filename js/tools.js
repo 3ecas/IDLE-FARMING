@@ -71,7 +71,10 @@ export function mountTools(container) {
     container.innerHTML = `
       <section class="tools-cell" data-cell-key="tools" data-tools-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Tools">
         <div class="tools-header">
-          <span class="tools-title">Tools</span>
+          <span class="tools-title">
+            <span class="tools-title__icon" aria-hidden="true">🛠️</span>
+            <span class="tools-title__text">Tools</span>
+          </span>
         </div>
         <div class="tools-body">
           ${renderToolButton("hand", "✋")}

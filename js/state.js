@@ -11,7 +11,7 @@ const FARM_PLOT_BASE_COST = 10;
 const FARM_PLOT_PRICE_GROWTH = 1.75;
 const FARM_PLOT_STORAGE_KEY = "idle-farm-farm-plots-v2";
 const FARM_PLOT_SAVE_VERSION = "4";
-const FARM_GROWTH_DURATION_MS = 10000;
+const DEFAULT_CROP_GROWTH_DURATION_MS = 10000;
 const FARM_STAGE_EMPTY = "empty";
 const FARM_STAGE_PLANTED = "planted";
 const FARM_STAGE_GROWING = "growing";
@@ -19,6 +19,7 @@ const FARM_STAGE_MATURE = "mature";
 const LAYOUT_SAVE_VERSION = "8";
 const STARTING_COINS = 5;
 const DEFAULT_HIDDEN_CELL_KEYS = ["market", "sellMarket", "money", "barn", "build"];
+const CELL_REVEAL_GAP = 20;
 const MILL_WOOD_COST = 15;
 const MILL_NAIL_COST = 5;
 
@@ -194,11 +195,11 @@ function getStarterLayoutPositions() {
   const buildSize = getCellSize("build");
   const millSize = getCellSize("mill");
   const toolsSize = getCellSize("tools");
-  const menuLeft = Math.max(16, Math.round((workspace.width - menuSize.width) / 2));
-  const toolsLeft = Math.max(16, Math.round((workspace.width - toolsSize.width) / 2));
-  const desiredMenuTop = Math.round((workspace.height * 2) / 3 - menuSize.height / 2);
-  const maxMenuTop = Math.max(16, workspace.height - menuSize.height - toolsSize.height - gap - 16);
-  const menuTop = Math.max(16, Math.min(desiredMenuTop, maxMenuTop));
+  const stackedWidth = Math.max(menuSize.width, toolsSize.width);
+  const menuLeft = Math.max(16, Math.round((workspace.width - stackedWidth) / 2));
+  const toolsLeft = menuLeft;
+  const stackHeight = menuSize.height + gap + toolsSize.height;
+  const menuTop = Math.max(16, Math.round((workspace.height - stackHeight) / 2));
   const toolsTop = menuTop + menuSize.height + gap;
   const popupTop = Math.max(16, menuTop - Math.max(marketSize.height, barnSize.height) - gap);
   const popupBottomTop = Math.min(workspace.height - moneySize.height - 16, toolsTop + toolsSize.height + gap);
@@ -265,6 +266,10 @@ function rectsOverlapWithGap(left, top, width, height, rect, gap) {
     top < rect.top + rect.height + gap &&
     top + height + gap > rect.top
   );
+}
+
+function isCellRectFree(left, top, width, height, obstacles, gap = 8) {
+  return obstacles.every((rect) => !rectsOverlapWithGap(left, top, width, height, rect, gap));
 }
 
 function isFarmPlotPositionFree(candidate, plots, excludePlotId = null) {
@@ -470,10 +475,65 @@ export function showCell(key) {
     return false;
   }
 
+  const spawnPosition = getCenteredSpawnPosition(key);
+  state.cells[key].left = spawnPosition.left;
+  state.cells[key].top = spawnPosition.top;
+  saveCellPosition(key, state.cells[key]);
   state.ui.hiddenCellKeys.splice(index, 1);
   saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
   notify();
   return true;
+}
+
+function getCenteredSpawnPosition(key) {
+  const workspace = getWorkspaceSize();
+  const bounds = getCellSize(key);
+  const obstacles = getObstacleRects(key);
+  const maxLeft = Math.max(0, workspace.width - bounds.width);
+  const maxTop = Math.max(0, workspace.height - bounds.height);
+  const baseLeft = snapToGrid(Math.min(maxLeft, Math.max(0, Math.round((workspace.width - bounds.width) / 2))));
+  const baseTop = snapToGrid(Math.min(maxTop, Math.max(0, Math.round((workspace.height - bounds.height) / 2))));
+  const searchStep = GRID_SIZE;
+  const maxRadius = Math.max(
+    1,
+    Math.ceil(
+      Math.max(
+        workspace.width / searchStep,
+        workspace.height / searchStep
+      )
+    )
+  );
+
+  for (let radius = 0; radius <= maxRadius; radius += 1) {
+    for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+      for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+        if (Math.max(Math.abs(offsetX), Math.abs(offsetY)) !== radius) {
+          continue;
+        }
+
+        const left = Math.min(maxLeft, Math.max(0, baseLeft + offsetX * searchStep));
+        const top = Math.min(maxTop, Math.max(0, baseTop + offsetY * searchStep));
+        if (isCellRectFree(left, top, bounds.width, bounds.height, obstacles, CELL_REVEAL_GAP)) {
+          return { left, top };
+        }
+      }
+    }
+  }
+
+  for (let top = 0; top <= maxTop; top += searchStep) {
+    for (let left = 0; left <= maxLeft; left += searchStep) {
+      const snappedLeft = snapToGrid(left);
+      const snappedTop = snapToGrid(top);
+      if (isCellRectFree(snappedLeft, snappedTop, bounds.width, bounds.height, obstacles, CELL_REVEAL_GAP)) {
+        return {
+          left: snappedLeft,
+          top: snappedTop,
+        };
+      }
+    }
+  }
+
+  return { left: baseLeft, top: baseTop };
 }
 
 export function moveCell(key, left, top) {
@@ -602,12 +662,46 @@ function ensureGrowthTicker() {
       return;
     }
 
+    if (document.body.classList.contains("is-dragging-cell")) {
+      return;
+    }
+
     notify();
   }, 250);
 }
 
 function saveFarmState() {
   saveFarmPlots(state.farm.plots);
+}
+
+function getPlantedCropProduct(plot) {
+  if (!plot?.cropId) {
+    return null;
+  }
+
+  const plantedProduct = getProduct(plot.cropId);
+  if (!plantedProduct) {
+    return null;
+  }
+
+  if (plantedProduct.category === "crops") {
+    return plantedProduct;
+  }
+
+  if (plantedProduct.category === "seeds" && plantedProduct.cropProductId) {
+    return getProduct(plantedProduct.cropProductId);
+  }
+
+  return plantedProduct;
+}
+
+function getPlotGrowthDurationMs(plot) {
+  const cropProduct = getPlantedCropProduct(plot);
+  if (!cropProduct) {
+    return DEFAULT_CROP_GROWTH_DURATION_MS;
+  }
+
+  return Number.isFinite(cropProduct?.growDurationMs) ? cropProduct.growDurationMs : DEFAULT_CROP_GROWTH_DURATION_MS;
 }
 
 export function setActiveTool(toolId) {
@@ -898,7 +992,7 @@ export function waterPlot(plotId) {
   }
 
   plot.stage = FARM_STAGE_GROWING;
-  plot.growCompleteAt = Date.now() + FARM_GROWTH_DURATION_MS;
+  plot.growCompleteAt = Date.now() + getPlotGrowthDurationMs(plot);
   saveFarmState();
   schedulePlotGrowth(plot);
   state.message = "Watered.";
@@ -908,7 +1002,25 @@ export function waterPlot(plotId) {
 
 export function harvestPlot(plotId) {
   const plot = getPlotById(plotId);
-  if (!plot || plot.stage !== FARM_STAGE_MATURE || !plot.cropId) {
+  if (!plot || !plot.cropId) {
+    state.message = "Not ready yet.";
+    notify();
+    return false;
+  }
+
+  if (plot.stage === FARM_STAGE_PLANTED || plot.stage === FARM_STAGE_GROWING) {
+    addBarnItem(plot.cropId, 1);
+    plot.cropId = null;
+    plot.stage = FARM_STAGE_EMPTY;
+    plot.growCompleteAt = null;
+    clearPlotGrowthTimer(plot.id);
+    saveFarmState();
+    state.message = "Seed recovered.";
+    notify();
+    return true;
+  }
+
+  if (plot.stage !== FARM_STAGE_MATURE) {
     state.message = "Not ready yet.";
     notify();
     return false;
@@ -916,7 +1028,8 @@ export function harvestPlot(plotId) {
 
   const cropProduct = getProduct(plot.cropId);
   const harvestProductId = cropProduct?.cropProductId || plot.cropId;
-  addBarnItem(harvestProductId, 1);
+  const harvestQuantity = Number.isFinite(cropProduct?.harvestYield) ? cropProduct.harvestYield : 1;
+  addBarnItem(harvestProductId, harvestQuantity);
   plot.cropId = null;
   plot.stage = FARM_STAGE_EMPTY;
   plot.growCompleteAt = null;
@@ -974,7 +1087,8 @@ export function getPlotGrowthProgress(plot) {
   }
 
   const remaining = Math.max(0, plot.growCompleteAt - Date.now());
-  return Math.max(0, Math.min(100, Math.round((1 - remaining / FARM_GROWTH_DURATION_MS) * 100)));
+  const total = getPlotGrowthDurationMs(plot);
+  return Math.max(0, Math.min(100, Math.round((1 - remaining / total) * 100)));
 }
 
 export function spawnFarmPlot(preferredPosition = null) {

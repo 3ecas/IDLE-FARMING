@@ -13,7 +13,6 @@ import {
 import { SHOP_SECTIONS, getProduct } from "./catalog.js";
 import { mountMovableCell } from "./drag.js";
 
-let shopOpen = false;
 let activeShopTab = "seeds";
 
 function clampToWorkspace(workspace, left, top) {
@@ -111,15 +110,6 @@ export function mountMarket(container) {
       return;
     }
 
-    const toggle = event.target.closest("[data-market-toggle]");
-    if (toggle) {
-      event.preventDefault();
-      shopOpen = !shopOpen;
-      setMessage(shopOpen ? "Shop open." : "Shop hidden.");
-      render();
-      return;
-    }
-
     const tabButton = event.target.closest("[data-market-tab]");
     if (tabButton) {
       event.preventDefault();
@@ -149,27 +139,23 @@ export function mountMarket(container) {
     }
 
     container.innerHTML = `
-      <section class="market-cell ${shopOpen ? "is-open" : "is-closed"}" data-cell-key="market" data-market-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Shop">
+      <section class="market-cell is-open" data-cell-key="market" data-market-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Shop">
         <div class="market-header">
-          <span class="market-title">Shop</span>
+          <span class="market-title">
+            <span class="market-title__icon" aria-hidden="true">🛒</span>
+            <span class="market-title__text">Shop</span>
+          </span>
           <div class="cell-header-actions">
-            <button type="button" class="market-toggle" data-market-toggle>${shopOpen ? "Hide" : "Show"}</button>
             <button type="button" class="cell-close" data-close-cell aria-label="Close Shop">x</button>
           </div>
         </div>
-        <div class="market-body ${shopOpen ? "" : "is-hidden"}">
-          ${
-            shopOpen
-              ? `
-                <div class="market-tabs" role="tablist" aria-label="Shop sections">
-                  ${SHOP_SECTIONS.map(renderMarketTab).join("")}
-                </div>
-                <div class="market-tab-panel market-${selectedSection.key}" role="tabpanel">
-                  ${selectedContent}
-                </div>
-              `
-              : ""
-          }
+        <div class="market-body">
+          <div class="market-tabs" role="tablist" aria-label="Shop sections">
+            ${SHOP_SECTIONS.map(renderMarketTab).join("")}
+          </div>
+          <div class="market-tab-panel market-${selectedSection.key}" role="tabpanel">
+            ${selectedContent}
+          </div>
         </div>
       </section>
     `;

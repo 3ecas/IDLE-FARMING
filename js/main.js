@@ -7,10 +7,12 @@ import { mountMoney } from "./money.js";
 import { mountPlot } from "./plot.js";
 import { mountSellMarket } from "./sellMarket.js";
 import { mountShopping } from "./shopping.js";
+import { mountToolCursor } from "./cursor.js";
+import { bootstrapGamePersistence } from "./persistence.js";
 import { mountTools } from "./tools.js";
 import { getCellSize } from "./layout.js";
 import { clearSelectedInventoryItem } from "./inventory.js";
-import { applyStarterLayout, clearActiveTool, isCellHidden, isToolActive, moveCell, onStateChange, restartFarm, setActiveTool, state } from "./state.js";
+import { clearActiveTool, isCellHidden, isToolActive, moveCell, onStateChange, restartFarm, setActiveTool, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
 const cellMount = document.getElementById("cell-mount");
@@ -29,6 +31,7 @@ function renderStatus() {
   statusRoot.textContent = state.message;
 }
 
+bootstrapGamePersistence();
 mountPlot(cellMount);
 mountMarket(marketMount);
 mountSellMarket(sellMarketMount);
@@ -39,9 +42,9 @@ mountBuild(buildMount);
 mountMill(millMount);
 mountMenu(menuMount);
 mountTools(toolsMount);
+mountToolCursor();
 onStateChange(renderStatus);
 renderStatus();
-applyStarterLayout();
 
 document.addEventListener("pointerdown", (event) => {
   const interactiveElement = event.target.closest(
@@ -160,4 +163,3 @@ function refreshLayout() {
 }
 
 window.addEventListener("resize", refreshLayout);
-refreshLayout();

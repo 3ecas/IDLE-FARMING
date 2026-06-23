@@ -34,6 +34,7 @@ body {
 button {
   font: inherit;
   color: inherit;
+  touch-action: manipulation;
 }
 
 button:focus-visible {
@@ -107,7 +108,7 @@ body.is-dragging-cell {
   border-radius: 18px;
   background: #dff4d8;
   box-shadow: none;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -145,6 +146,7 @@ body.is-dragging-cell {
   font-size: 0.92rem;
   line-height: 1;
   color: rgba(63, 53, 71, 0.7);
+  pointer-events: none;
 }
 
 .farm-cell__status {
@@ -156,6 +158,7 @@ body.is-dragging-cell {
   font-weight: 700;
   line-height: 1;
   color: #4f8bcb;
+  pointer-events: none;
 }
 
 .farm-cell__status--planted {
@@ -179,6 +182,7 @@ body.is-dragging-cell {
   background: rgba(79, 139, 203, 0.16);
   overflow: hidden;
   flex: 0 0 auto;
+  pointer-events: none;
 }
 
 .farm-cell__progress-fill {
@@ -198,6 +202,7 @@ body.is-dragging-cell {
   font-weight: 700;
   line-height: 1;
   color: rgba(63, 53, 71, 0.78);
+  pointer-events: none;
 }
 
 @keyframes farm-pop {
@@ -233,7 +238,13 @@ body.is-dragging-cell {
 
 .sell-market-cell {
   width: 260px;
-  min-height: 156px;
+  min-height: 0;
+  height: auto;
+}
+
+.market-sell-drop {
+  display: grid;
+  gap: 6px;
 }
 
 .money-cell {
@@ -303,6 +314,9 @@ body.is-dragging-cell {
 
 .menu-title,
 .tools-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -365,8 +379,21 @@ body.is-dragging-cell {
 }
 
 .market-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.market-title__icon,
+.money-title__icon,
+.tools-title__icon,
+.build-title__icon,
+.mill-title__icon,
+.barn-title__icon {
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .market-toggle {
@@ -416,6 +443,9 @@ body.is-dragging-cell {
 }
 
 .money-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -496,6 +526,7 @@ body.is-dragging-cell {
   font-size: 0.62rem;
   font-weight: 700;
   line-height: 1;
+  touch-action: manipulation;
   transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
 }
 
@@ -509,7 +540,8 @@ body.is-dragging-cell {
 
 .market-tab-panel {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 3px;
   padding: 5px 6px 6px;
   border: 1px solid rgba(127, 196, 127, 0.18);
   border-radius: 12px;
@@ -530,14 +562,20 @@ body.is-dragging-cell {
 .market-product {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 2px;
   width: 100%;
-  padding: 6px 8px;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  min-height: 52px;
+  padding: 2px;
   border: 1px solid rgba(127, 196, 127, 0.18);
   border-radius: 10px;
   background: #fff;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
+  touch-action: manipulation;
   transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
 }
 
@@ -549,17 +587,25 @@ body.is-dragging-cell {
 }
 
 .market-product__name {
-  font-size: 0.78rem;
+  min-width: 0;
+  font-size: 0.74rem;
   font-weight: 700;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.05;
 }
 
 .market-product__price {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.68rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 0.64rem;
   color: var(--muted);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .market-item__name {
@@ -653,6 +699,9 @@ body.is-dragging-cell {
 .mill-title,
 .shopping-title,
 .barn-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -683,7 +732,7 @@ body.is-dragging-cell {
   border-radius: 10px;
   background: #fafdf8;
   cursor: pointer;
-  text-align: left;
+  touch-action: manipulation;
   transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
 }
 
@@ -705,6 +754,18 @@ body.is-dragging-cell {
 .build-product__name,
 .build-product__cost {
   display: block;
+}
+
+.build-product {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.build-product__icon {
+  font-size: 0.88rem;
+  line-height: 1;
 }
 
 .build-product__name {
@@ -786,6 +847,7 @@ body.is-dragging-cell {
   font-size: 0.76rem;
   font-weight: 700;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .sell-quantity__button:disabled {
@@ -833,6 +895,7 @@ body.is-dragging-cell {
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
+  touch-action: manipulation;
   transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
 }
 

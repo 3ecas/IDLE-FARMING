@@ -1,31 +1,15 @@
+import { flour } from "./items/flour.js";
+import { nails } from "./items/nails.js";
+import { wood } from "./items/wood.js";
 import { CROPS, getCrop, getSeed, SEEDS } from "./seeds.js";
 
 export const MATERIALS = {
-  wood: {
-    id: "wood",
-    category: "materials",
-    marketName: "Wood",
-    inventoryName: "Wood",
-    price: 1,
-  },
-  nails: {
-    id: "nails",
-    category: "materials",
-    marketName: "Nails",
-    inventoryName: "Nails",
-    price: 2,
-  },
+  wood,
+  nails,
 };
 
 export const PROCESSED_GOODS = {
-  flour: {
-    id: "flour",
-    category: "processed",
-    marketName: "Flour",
-    inventoryName: "Flour",
-    price: 0,
-    sellPrice: 5,
-  },
+  flour,
 };
 
 export const PRODUCTS = {
@@ -39,7 +23,7 @@ export const SHOP_SECTIONS = [
   {
     key: "seeds",
     label: "Seeds",
-    productIds: ["wheatSeed"],
+    productIds: ["wheatSeed", "cabbageSeed", "strawberrySeed"],
   },
   {
     key: "farmUpgrades",

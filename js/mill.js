@@ -57,7 +57,10 @@ export function mountMill(container) {
     container.innerHTML = `
       <section class="mill-cell" data-cell-key="mill" data-mill-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Mill">
         <div class="mill-header">
-          <span class="mill-title">Mill</span>
+          <span class="mill-title">
+            <span class="mill-title__icon" aria-hidden="true">🏭</span>
+            <span class="mill-title__text">Mill</span>
+          </span>
         </div>
         <div class="mill-body">
           <button type="button" class="mill-action ${wheat < 2 ? "is-disabled" : ""}" data-mill-wheat aria-disabled="${wheat < 2 ? "true" : "false"}">

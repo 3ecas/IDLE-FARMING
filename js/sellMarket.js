@@ -2,7 +2,6 @@ import { getProductSellPrice } from "./catalog.js";
 import {
   adjustSellItem,
   getBarnItemQuantity,
-  getCellDragBounds,
   getSellEntries,
   getSellTotal,
   hideCell,
@@ -16,16 +15,42 @@ import {
 } from "./state.js";
 import { mountMovableCell } from "./drag.js";
 
-let marketOpen = false;
+const SELL_MARKET_WIDTH = 260;
+const SELL_MARKET_OUTER_PADDING = 16;
+const SELL_MARKET_HEADER_HEIGHT = 22;
+const SELL_MARKET_BODY_TOP_GAP = 6;
+const SELL_MARKET_ITEM_HEIGHT = 50;
+const SELL_MARKET_ITEM_GAP = 6;
+const SELL_MARKET_ACTION_HEIGHT = 30;
+const SELL_MARKET_EMPTY_HEIGHT = 29;
 
 function clampToWorkspace(workspace, left, top) {
-  const bounds = getCellDragBounds("sellMarket");
+  const bounds = getSellMarketBounds();
   const maxLeft = Math.max(0, workspace.clientWidth - bounds.width);
   const maxTop = Math.max(0, workspace.clientHeight - bounds.height);
 
   return {
     left: Math.min(maxLeft, Math.max(0, left)),
     top: Math.min(maxTop, Math.max(0, top)),
+  };
+}
+
+function getSellMarketBounds() {
+  const entryCount = getSellEntries().length;
+  const contentHeight =
+    entryCount === 0
+      ? SELL_MARKET_EMPTY_HEIGHT
+      : entryCount * SELL_MARKET_ITEM_HEIGHT +
+        entryCount * SELL_MARKET_ITEM_GAP +
+        SELL_MARKET_ACTION_HEIGHT;
+
+  return {
+    width: SELL_MARKET_WIDTH,
+    height:
+      SELL_MARKET_OUTER_PADDING +
+      SELL_MARKET_HEADER_HEIGHT +
+      SELL_MARKET_BODY_TOP_GAP +
+      contentHeight,
   };
 }
 
@@ -89,15 +114,6 @@ export function mountSellMarket(container) {
       return;
     }
 
-    const toggle = event.target.closest("[data-sell-market-toggle]");
-    if (toggle) {
-      event.preventDefault();
-      marketOpen = !marketOpen;
-      setMessage(marketOpen ? "Market open." : "Market hidden.");
-      render();
-      return;
-    }
-
     const adjustButton = event.target.closest("[data-sell-adjust]");
     if (adjustButton) {
       event.preventDefault();
@@ -130,18 +146,21 @@ export function mountSellMarket(container) {
       state.cells.sellMarket.left,
       state.cells.sellMarket.top
     );
+    const bounds = getSellMarketBounds();
 
     container.innerHTML = `
-      <section class="market-cell sell-market-cell ${marketOpen ? "is-open" : "is-closed"}" data-cell-key="sellMarket" data-sell-market-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Market">
+      <section class="market-cell sell-market-cell is-open" data-cell-key="sellMarket" data-sell-market-cell style="left:${position.left}px; top:${position.top}px; width:${bounds.width}px; height:${bounds.height}px;" aria-label="Market">
         <div class="market-header">
-          <span class="market-title">Market</span>
+          <span class="market-title">
+            <span class="market-title__icon" aria-hidden="true">⚖</span>
+            <span class="market-title__text">Market</span>
+          </span>
           <div class="cell-header-actions">
-            <button type="button" class="market-toggle" data-sell-market-toggle>${marketOpen ? "Hide" : "Show"}</button>
             <button type="button" class="cell-close" data-close-cell aria-label="Close Market">x</button>
           </div>
         </div>
-        <div class="market-body ${marketOpen ? "" : "is-hidden"}">
-          ${marketOpen ? renderSellPanel() : ""}
+        <div class="market-body">
+          ${renderSellPanel()}
         </div>
       </section>
     `;

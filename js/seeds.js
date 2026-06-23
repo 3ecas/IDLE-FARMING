@@ -1,23 +1,17 @@
+import { cabbage } from "./items/cabbage.js";
+import { wheat } from "./items/wheat.js";
+import { strawberry } from "./items/strawberry.js";
+
 export const SEEDS = {
-  wheatSeed: {
-    id: "wheatSeed",
-    category: "seeds",
-    marketName: "Wheat",
-    inventoryName: "Wheat seed",
-    price: 1,
-    cropProductId: "wheatCrop",
-  },
+  wheatSeed: wheat.seed,
+  cabbageSeed: cabbage.seed,
+  strawberrySeed: strawberry.seed,
 };
 
 export const CROPS = {
-  wheatCrop: {
-    id: "wheatCrop",
-    category: "crops",
-    marketName: "Wheat",
-    inventoryName: "Wheat",
-    price: 0,
-    sellPrice: 2,
-  },
+  wheatCrop: wheat.crop,
+  cabbageCrop: cabbage.crop,
+  strawberryCrop: strawberry.crop,
 };
 
 export function getSeed(seedId) {

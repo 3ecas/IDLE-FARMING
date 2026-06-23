@@ -65,17 +65,22 @@ export function mountBuild(container) {
     const millBuilt = isBuildingBuilt("mill");
     const wood = getBarnItemQuantity("wood");
     const nails = getBarnItemQuantity("nails");
+    const millLabel = millBuilt ? "Already Built" : "Mill";
 
     container.innerHTML = `
       <section class="build-cell" data-cell-key="build" data-build-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Build">
         <div class="build-header">
-          <span class="build-title">Build</span>
+          <span class="build-title">
+            <span class="build-title__icon" aria-hidden="true">🔨</span>
+            <span class="build-title__text">Build</span>
+          </span>
           <button type="button" class="cell-close" data-close-cell aria-label="Close Build">x</button>
         </div>
         <div class="build-body">
           <button type="button" class="build-product ${millBuilt || !canBuildMill() ? "is-disabled" : ""}" data-build-mill aria-disabled="${millBuilt || !canBuildMill() ? "true" : "false"}">
-            <span class="build-product__name">${millBuilt ? "Mill built" : "Mill"}</span>
-            <span class="build-product__cost">Wood ${wood}/15 - Nails ${nails}/5</span>
+            <span class="build-product__icon" aria-hidden="true">🏭</span>
+            <span class="build-product__name">${millLabel}</span>
+            ${millBuilt ? "" : `<span class="build-product__cost">Wood ${wood}/15 - Nails ${nails}/5</span>`}
           </button>
         </div>
       </section>

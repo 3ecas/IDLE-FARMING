@@ -18,7 +18,6 @@ function clampToWorkspace(workspace, left, top) {
   };
 }
 
-let barnOpen = false;
 let activeSeedDrag = null;
 const recentlyDraggedSeedIds = new Map();
 const BARN_SECTIONS = [
@@ -27,6 +26,8 @@ const BARN_SECTIONS = [
   { key: "materials", label: "Materials", categories: ["materials"] },
   { key: "products", label: "Products", categories: ["processed"] },
 ];
+const barnSectionOpenState = new Map(BARN_SECTIONS.map((section) => [section.key, false]));
+let barnWasHidden = true;
 
 function markRecentlyDraggedSeed(productId) {
   recentlyDraggedSeedIds.set(productId, Date.now());
@@ -104,11 +105,11 @@ function isSellableProduct(product) {
 function renderInventoryItem(product, quantity) {
   if (product.category === "seeds") {
     return `
-      <button
-        type="button"
-        class="inventory-item ${isSelectedInventoryItem(product.id) ? "is-selected" : ""}"
-        data-inventory-product="${product.id}"
-        draggable="false"
+    <button
+      type="button"
+      class="inventory-item ${isSelectedInventoryItem(product.id) ? "is-selected" : ""}"
+      data-inventory-product="${product.id}"
+      draggable="false"
         data-seed-button
       >
         <span class="inventory-item__name">${product.inventoryName}</span>
@@ -142,8 +143,9 @@ function renderInventoryItem(product, quantity) {
 
 function renderBarnSection(section, entries) {
   const sectionEntries = entries.filter(({ product }) => section.categories.includes(product.category));
+  const isOpen = barnSectionOpenState.get(section.key) ?? false;
   return `
-    <details class="barn-section barn-section--${section.key}" open>
+    <details class="barn-section barn-section--${section.key}" data-barn-section="${section.key}" ${isOpen ? "open" : ""}>
       <summary>${section.label}</summary>
       <div class="barn-section__body">
         ${
@@ -167,6 +169,15 @@ export function mountBarn(container) {
     },
   });
 
+  container.addEventListener("toggle", (event) => {
+    const details = event.target.closest?.("[data-barn-section]");
+    if (!details) {
+      return;
+    }
+
+    barnSectionOpenState.set(details.dataset.barnSection, details.open);
+  }, true);
+
   container.addEventListener("click", (event) => {
     const closeButton = event.target.closest("[data-close-cell]");
     if (closeButton) {
@@ -186,15 +197,6 @@ export function mountBarn(container) {
       return;
     }
 
-    const toggle = event.target.closest("[data-barn-toggle]");
-    if (!toggle) {
-      return;
-    }
-
-    event.preventDefault();
-    barnOpen = !barnOpen;
-    setMessage(barnOpen ? "Barn open." : "Barn hidden.");
-    render();
   });
 
   container.addEventListener("pointerdown", (event) => {
@@ -221,8 +223,6 @@ export function mountBarn(container) {
       ghost: null,
       dragged: false,
     };
-
-    event.preventDefault();
 
     try {
       inventoryButton.setPointerCapture(event.pointerId);
@@ -301,8 +301,16 @@ export function mountBarn(container) {
 
   function render() {
     if (isCellHidden("barn")) {
+      barnWasHidden = true;
       container.innerHTML = "";
       return;
+    }
+
+    if (barnWasHidden) {
+      for (const section of BARN_SECTIONS) {
+        barnSectionOpenState.set(section.key, false);
+      }
+      barnWasHidden = false;
     }
 
     const entries = getInventoryEntries();
@@ -313,15 +321,17 @@ export function mountBarn(container) {
     );
 
     container.innerHTML = `
-      <section class="barn-cell ${barnOpen ? "is-open" : "is-closed"}" data-cell-key="barn" data-barn-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Barn">
+      <section class="barn-cell is-open" data-cell-key="barn" data-barn-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Barn">
         <div class="barn-header">
-          <span class="barn-title">Barn</span>
+          <span class="barn-title">
+            <span class="barn-title__icon" aria-hidden="true">📦</span>
+            <span class="barn-title__text">Barn</span>
+          </span>
           <div class="cell-header-actions">
-            <button type="button" class="barn-toggle" data-barn-toggle>${barnOpen ? "Hide" : "Show"}</button>
             <button type="button" class="cell-close" data-close-cell aria-label="Close Barn">x</button>
           </div>
         </div>
-        <div class="barn-body ${barnOpen ? "" : "is-hidden"}">
+        <div class="barn-body">
           ${BARN_SECTIONS.map((section) => renderBarnSection(section, entries)).join("")}
         </div>
       </section>
