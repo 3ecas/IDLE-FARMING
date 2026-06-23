@@ -87,6 +87,7 @@ export function mountPlot(container) {
           const nameLabel = getPlotDisplayLabel(plot);
           const statusLabel = getPlotStatusLabel(plot);
           const growthProgress = getPlotGrowthProgress(plot);
+          const statusText = stage === "growing" ? `${statusLabel} ${growthProgress}%` : statusLabel;
           const ariaLabel = nameLabel ? `Land plot, ${nameLabel}` : "Land plot";
 
           return `
@@ -100,7 +101,7 @@ export function mountPlot(container) {
               data-stage="${stage}"
             >
               <span class="farm-cell__glyph">${getPlotGlyph(plot)}</span>
-              ${statusLabel ? `<span class="farm-cell__status farm-cell__status--${stage}">${statusLabel}</span>` : ""}
+              ${statusText ? `<span class="farm-cell__status farm-cell__status--${stage}">${statusText}</span>` : ""}
               ${
                 stage === "growing"
                   ? `

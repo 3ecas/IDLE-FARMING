@@ -293,10 +293,12 @@ body.is-dragging-cell {
 
 .menu-cell {
   width: 280px;
+  z-index: 30;
 }
 
 .tools-cell {
   width: 150px;
+  z-index: 30;
 }
 
 .menu-cell.is-dragging,
@@ -391,7 +393,8 @@ body.is-dragging-cell {
 .tools-title__icon,
 .build-title__icon,
 .mill-title__icon,
-.barn-title__icon {
+.barn-title__icon,
+.animal-pen-title__icon {
   font-size: 0.72rem;
   line-height: 1;
 }
@@ -510,7 +513,7 @@ body.is-dragging-cell {
 
 .market-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   margin-bottom: 6px;
 }
@@ -540,7 +543,7 @@ body.is-dragging-cell {
 
 .market-tab-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
   gap: 3px;
   padding: 5px 6px 6px;
   border: 1px solid rgba(127, 196, 127, 0.18);
@@ -568,8 +571,8 @@ body.is-dragging-cell {
   width: 100%;
   min-width: 0;
   aspect-ratio: 1 / 1;
-  min-height: 52px;
-  padding: 2px;
+  min-height: 68px;
+  padding: 4px;
   border: 1px solid rgba(127, 196, 127, 0.18);
   border-radius: 10px;
   background: #fff;
@@ -588,12 +591,16 @@ body.is-dragging-cell {
 
 .market-product__name {
   min-width: 0;
-  font-size: 0.74rem;
+  font-size: 0.64rem;
   font-weight: 700;
   white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.05;
+  text-overflow: clip;
+  line-height: 1;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .market-product__price {
@@ -602,7 +609,7 @@ body.is-dragging-cell {
   gap: 4px;
   justify-content: center;
   flex: 0 0 auto;
-  font-size: 0.64rem;
+  font-size: 0.58rem;
   color: var(--muted);
   line-height: 1;
   white-space: nowrap;
@@ -638,6 +645,7 @@ body.is-dragging-cell {
 
 .build-cell,
 .mill-cell,
+.animal-pen-cell,
 .shopping-cell,
 .barn-cell {
   position: absolute;
@@ -681,12 +689,14 @@ body.is-dragging-cell {
 .shopping-cell.is-dragging,
 .build-cell.is-dragging,
 .mill-cell.is-dragging,
+.animal-pen-cell.is-dragging,
 .barn-cell.is-dragging {
   cursor: grabbing;
 }
 
 .build-header,
 .mill-header,
+.animal-pen-header,
 .shopping-header,
 .barn-header {
   display: flex;
@@ -697,6 +707,7 @@ body.is-dragging-cell {
 
 .build-title,
 .mill-title,
+.animal-pen-title,
 .shopping-title,
 .barn-title {
   display: inline-flex;
@@ -792,6 +803,103 @@ body.is-dragging-cell {
 
 .mill-action__ingredients {
   display: block;
+}
+
+.animal-pen-cell {
+  width: 208px;
+  min-height: 196px;
+  z-index: 12;
+}
+
+.animal-pen-header {
+  min-height: 22px;
+}
+
+.animal-pen-body {
+  display: grid;
+  gap: 6px;
+}
+
+.animal-pen-food {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px dashed rgba(127, 196, 127, 0.28);
+  border-radius: 12px;
+  background: #f7fbf4;
+}
+
+.animal-pen-food__label,
+.animal-pen-food__value {
+  line-height: 1;
+}
+
+.animal-pen-food__label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.animal-pen-food__value {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.animal-pen-list {
+  display: grid;
+  gap: 6px;
+}
+
+.animal-item {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(127, 196, 127, 0.18);
+  border-radius: 12px;
+  background: #fafdf8;
+}
+
+.animal-item__icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.animal-item__name {
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.animal-item__status {
+  font-size: 0.64rem;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.animal-item__progress {
+  display: block;
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(79, 139, 203, 0.16);
+  overflow: hidden;
+}
+
+.animal-item__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4f8bcb;
+  transition: width 0.2s linear;
+}
+
+.animal-pen-empty {
+  padding: 6px 8px;
+  border: 1px dashed rgba(127, 196, 127, 0.22);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-align: center;
 }
 
 .sell-empty {
@@ -998,7 +1106,8 @@ body.is-hand-tool-active .menu-header,
 body.is-hand-tool-active .build-header,
 body.is-hand-tool-active .mill-header,
 body.is-hand-tool-active .tools-header,
-body.is-hand-tool-active .barn-header {
+body.is-hand-tool-active .barn-header,
+body.is-hand-tool-active .animal-pen-header {
   cursor: grab;
 }
 
@@ -1009,7 +1118,8 @@ body.is-hand-tool-active .menu-cell.is-dragging,
 body.is-hand-tool-active .build-cell.is-dragging,
 body.is-hand-tool-active .mill-cell.is-dragging,
 body.is-hand-tool-active .tools-cell.is-dragging,
-body.is-hand-tool-active .barn-cell.is-dragging {
+body.is-hand-tool-active .barn-cell.is-dragging,
+body.is-hand-tool-active .animal-pen-cell.is-dragging {
   cursor: grabbing;
 }
 

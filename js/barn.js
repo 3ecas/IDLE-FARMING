@@ -1,8 +1,20 @@
 import { getProduct } from "./catalog.js";
-import { getCellDragBounds, hideCell, isCellHidden, moveCell, onStateChange, plantSeedFromInventoryOnPlot, state, setMessage } from "./state.js";
+import {
+  addAnimalFoodToPen,
+  addAnimalToPen,
+  getCellDragBounds,
+  hideCell,
+  isCellHidden,
+  moveCell,
+  onStateChange,
+  plantSeedFromInventoryOnPlot,
+  state,
+  setMessage,
+} from "./state.js";
 import { getInventoryEntries, handleInventorySelection, isSelectedInventoryItem } from "./inventory.js";
 import { mountMovableCell } from "./drag.js";
 import { addProductToSellStand, getSellCellFromPoint } from "./sell.js";
+import { getAnimalPenDropTargetFromPoint } from "./animalPen.js";
 
 const DRAG_THRESHOLD = 4;
 const DRAG_SUPPRESS_MS = 300;
@@ -23,6 +35,7 @@ const recentlyDraggedSeedIds = new Map();
 const BARN_SECTIONS = [
   { key: "seeds", label: "Seeds", categories: ["seeds"] },
   { key: "crops", label: "Crops", categories: ["crops"] },
+  { key: "animals", label: "Animals", categories: ["animals"] },
   { key: "materials", label: "Materials", categories: ["materials"] },
   { key: "products", label: "Products", categories: ["processed"] },
 ];
@@ -103,14 +116,13 @@ function isSellableProduct(product) {
 }
 
 function renderInventoryItem(product, quantity) {
-  if (product.category === "seeds") {
+  if (product.category === "seeds" || product.category === "animals") {
     return `
     <button
       type="button"
       class="inventory-item ${isSelectedInventoryItem(product.id) ? "is-selected" : ""}"
       data-inventory-product="${product.id}"
       draggable="false"
-        data-seed-button
       >
         <span class="inventory-item__name">${product.inventoryName}</span>
         <span class="inventory-item__count">x${quantity}</span>
@@ -207,13 +219,26 @@ export function mountBarn(container) {
 
     const productId = inventoryButton.dataset.inventoryProduct;
     const product = getProduct(productId);
-    if (!product || (product.category !== "seeds" && !isSellableProduct(product))) {
+    if (!product) {
+      return;
+    }
+
+    let target = null;
+    if (product.category === "seeds") {
+      target = "farm";
+    } else if (product.category === "animals") {
+      target = "animalPen";
+    } else if (product.id === "strawCrop") {
+      target = "animalFood";
+    } else if (isSellableProduct(product)) {
+      target = "sell";
+    } else {
       return;
     }
 
     activeSeedDrag = {
       productId,
-      target: product.category === "seeds" ? "farm" : "sell",
+      target,
       button: inventoryButton,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -284,6 +309,16 @@ export function mountBarn(container) {
       const farmCell = getFarmCellFromPoint(event.clientX, event.clientY);
       if (farmCell) {
         plantSeedFromInventoryOnPlot(farmCell.dataset.cellKey, snapshot.productId);
+      }
+    } else if (snapshot.target === "animalPen") {
+      const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
+      if (penTarget === "animals") {
+        addAnimalToPen(snapshot.productId);
+      }
+    } else if (snapshot.target === "animalFood") {
+      const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
+      if (penTarget === "food") {
+        addAnimalFoodToPen(snapshot.productId);
       }
     } else {
       const sellCell = getSellCellFromPoint(event.clientX, event.clientY);

@@ -4,6 +4,7 @@ import { getCellSize } from "./layout.js";
 const listeners = new Set();
 const growthTimers = new Map();
 let growthTicker = null;
+let animalPenTicker = null;
 const GRID_SIZE = 24;
 const FARM_PLOT_SIZE = 72;
 const FARM_PLOT_SPAWN_GAP = 0;
@@ -16,12 +17,17 @@ const FARM_STAGE_EMPTY = "empty";
 const FARM_STAGE_PLANTED = "planted";
 const FARM_STAGE_GROWING = "growing";
 const FARM_STAGE_MATURE = "mature";
-const LAYOUT_SAVE_VERSION = "8";
+const LAYOUT_SAVE_VERSION = "9";
 const STARTING_COINS = 5;
 const DEFAULT_HIDDEN_CELL_KEYS = ["market", "sellMarket", "money", "barn", "build"];
 const CELL_REVEAL_GAP = 20;
 const MILL_WOOD_COST = 15;
 const MILL_NAIL_COST = 5;
+const ANIMAL_PEN_WOOD_COST = 20;
+const ANIMAL_PEN_NAIL_COST = 10;
+const ANIMAL_PEN_CYCLE_DURATION_MS = 20000;
+const ANIMAL_PEN_STORAGE_KEY = "idle-farm-animal-pen-v1";
+const ANIMAL_PEN_SAVE_VERSION = "1";
 
 const STORAGE_KEYS = {
   farm: "idle-farm-farm-cell-position",
@@ -32,7 +38,10 @@ const STORAGE_KEYS = {
   menu: "idle-farm-menu-cell-position",
   build: "idle-farm-build-cell-position",
   mill: "idle-farm-mill-cell-position",
+  animalPen: "idle-farm-animal-pen-cell-position",
   millBuilt: "idle-farm-mill-built",
+  animalPenBuilt: "idle-farm-animal-pen-built",
+  animalPenSaveVersion: "idle-farm-animal-pen-version",
   tools: "idle-farm-tools-cell-position",
   farmPlots: "idle-farm-farm-plots",
   hiddenCells: "idle-farm-hidden-cells",
@@ -50,6 +59,7 @@ const DEFAULT_CELL_POSITIONS = {
   menu: readCellPosition("menu", { left: 48, top: 240 }),
   build: readCellPosition("build", { left: 48, top: 328 }),
   mill: readCellPosition("mill", { left: 248, top: 328 }),
+  animalPen: readCellPosition("animalPen", { left: 48, top: 420 }),
   tools: readCellPosition("tools", { left: 48, top: 240 }),
 };
 
@@ -176,6 +186,89 @@ function saveFarmPlots(plots) {
   }
 }
 
+function normalizeAnimalPenFood(food) {
+  const normalized = {};
+  if (!food || typeof food !== "object") {
+    return normalized;
+  }
+
+  for (const [productId, quantity] of Object.entries(food)) {
+    if (typeof productId !== "string" || !productId) {
+      continue;
+    }
+
+    const nextQuantity = Number(quantity);
+    if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+      continue;
+    }
+
+    normalized[productId] = Math.floor(nextQuantity);
+  }
+
+  return normalized;
+}
+
+function normalizeAnimalPenAnimal(animal, index) {
+  if (!animal || typeof animal !== "object") {
+    return null;
+  }
+
+  const product = typeof animal.productId === "string" ? getProduct(animal.productId) : null;
+  if (!product || product.category !== "animals") {
+    return null;
+  }
+
+  const readyAt = Number.isFinite(animal.readyAt) ? animal.readyAt : null;
+  return {
+    id: typeof animal.id === "string" && animal.id ? animal.id : `${product.id}-${Date.now()}-${index}`,
+    productId: product.id,
+    readyAt,
+  };
+}
+
+function normalizeAnimalPenState(pen) {
+  const source = pen && typeof pen === "object" ? pen : {};
+  const animals = Array.isArray(source.animals)
+    ? source.animals
+        .map((animal, index) => normalizeAnimalPenAnimal(animal, index))
+        .filter(Boolean)
+    : [];
+
+  return {
+    food: normalizeAnimalPenFood(source.food),
+    animals,
+  };
+}
+
+function saveAnimalPenState(pen = state.animalPen) {
+  try {
+    localStorage.setItem(ANIMAL_PEN_STORAGE_KEY, JSON.stringify(pen));
+    localStorage.setItem(STORAGE_KEYS.animalPenSaveVersion, ANIMAL_PEN_SAVE_VERSION);
+  } catch {
+    // Best effort.
+  }
+}
+
+function readAnimalPenState() {
+  const storedVersion = localStorage.getItem(STORAGE_KEYS.animalPenSaveVersion);
+  const emptyPen = { food: {}, animals: [] };
+
+  if (storedVersion !== ANIMAL_PEN_SAVE_VERSION) {
+    saveAnimalPenState(emptyPen);
+    return emptyPen;
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ANIMAL_PEN_STORAGE_KEY) || "null");
+    const pen = normalizeAnimalPenState(parsed);
+    saveAnimalPenState(pen);
+    return pen;
+  } catch {
+    saveAnimalPenState(emptyPen);
+    return emptyPen;
+  }
+}
+
 function getWorkspaceSize() {
   const workspace = document.getElementById("workspace");
   return {
@@ -184,7 +277,7 @@ function getWorkspaceSize() {
   };
 }
 
-function getStarterLayoutPositions() {
+export function getStarterLayoutPositions() {
   const workspace = getWorkspaceSize();
   const gap = 16;
   const barnSize = getCellSize("barn");
@@ -194,6 +287,7 @@ function getStarterLayoutPositions() {
   const menuSize = getCellSize("menu");
   const buildSize = getCellSize("build");
   const millSize = getCellSize("mill");
+  const animalPenSize = getCellSize("animalPen");
   const toolsSize = getCellSize("tools");
   const stackedWidth = Math.max(menuSize.width, toolsSize.width);
   const menuLeft = Math.max(16, Math.round((workspace.width - stackedWidth) / 2));
@@ -203,11 +297,15 @@ function getStarterLayoutPositions() {
   const toolsTop = menuTop + menuSize.height + gap;
   const popupTop = Math.max(16, menuTop - Math.max(marketSize.height, barnSize.height) - gap);
   const popupBottomTop = Math.min(workspace.height - moneySize.height - 16, toolsTop + toolsSize.height + gap);
+  const rightColumnWidth = Math.max(buildSize.width, millSize.width, animalPenSize.width);
   const popupRightLeft = Math.min(
     Math.max(16, toolsLeft),
-    Math.max(16, workspace.width - Math.max(buildSize.width, moneySize.width, millSize.width) - 16)
+    Math.max(16, workspace.width - Math.max(rightColumnWidth, moneySize.width) - 16)
   );
   const popupLeftLeft = Math.max(16, Math.min(menuLeft - sellMarketSize.width - gap, workspace.width - sellMarketSize.width - 16));
+  const buildTop = popupTop;
+  const millTop = Math.min(workspace.height - millSize.height - 16, buildTop + buildSize.height + gap);
+  const animalPenTop = Math.min(workspace.height - animalPenSize.height - 16, millTop + millSize.height + gap);
 
   return {
     barn: { left: menuLeft, top: popupBottomTop },
@@ -215,8 +313,9 @@ function getStarterLayoutPositions() {
     sellMarket: { left: popupLeftLeft, top: popupTop },
     money: { left: popupRightLeft, top: popupBottomTop },
     menu: { left: menuLeft, top: menuTop },
-    build: { left: popupRightLeft, top: popupTop },
-    mill: { left: popupRightLeft, top: Math.min(workspace.height - millSize.height - 16, popupBottomTop + buildSize.height + gap) },
+    build: { left: popupRightLeft, top: buildTop },
+    mill: { left: popupRightLeft, top: millTop },
+    animalPen: { left: popupRightLeft, top: animalPenTop },
     tools: { left: toolsLeft, top: toolsTop },
   };
 }
@@ -402,6 +501,7 @@ export const state = {
     menu: DEFAULT_CELL_POSITIONS.menu,
     build: DEFAULT_CELL_POSITIONS.build,
     mill: DEFAULT_CELL_POSITIONS.mill,
+    animalPen: DEFAULT_CELL_POSITIONS.animalPen,
     tools: DEFAULT_CELL_POSITIONS.tools,
   },
   farm: {
@@ -424,13 +524,16 @@ export const state = {
   barn: {
     items: {},
   },
+  animalPen: readAnimalPenState(),
   buildings: {
     mill: readFlag("millBuilt", false),
+    animalPen: readFlag("animalPenBuilt", false),
   },
   message: "Drag the cell.",
 };
 
 hydratePlotGrowthTimers();
+hydrateAnimalPenState();
 
 function notify() {
   for (const listener of listeners) {
@@ -557,6 +660,7 @@ export function applyStarterLayout(force = false) {
   state.cells.menu = layout.menu;
   state.cells.build = layout.build;
   state.cells.mill = layout.mill;
+  state.cells.animalPen = layout.animalPen;
   state.cells.tools = layout.tools;
   saveCellPosition("market", state.cells.market);
   saveCellPosition("sellMarket", state.cells.sellMarket);
@@ -565,6 +669,7 @@ export function applyStarterLayout(force = false) {
   saveCellPosition("menu", state.cells.menu);
   saveCellPosition("build", state.cells.build);
   saveCellPosition("mill", state.cells.mill);
+  saveCellPosition("animalPen", state.cells.animalPen);
   saveCellPosition("tools", state.cells.tools);
   if (!force && storedLayoutVersion !== LAYOUT_SAVE_VERSION) {
     state.ui.hiddenCellKeys = Array.from(new Set([...state.ui.hiddenCellKeys, ...DEFAULT_HIDDEN_CELL_KEYS]));
@@ -704,6 +809,154 @@ function getPlotGrowthDurationMs(plot) {
   return Number.isFinite(cropProduct?.growDurationMs) ? cropProduct.growDurationMs : DEFAULT_CROP_GROWTH_DURATION_MS;
 }
 
+function getAnimalProduct(productId) {
+  const product = getProduct(productId);
+  return product?.category === "animals" ? product : null;
+}
+
+function getAnimalFoodRequirement(productId) {
+  const product = getAnimalProduct(productId);
+  return product?.foodCost && typeof product.foodCost === "object" ? product.foodCost : { strawCrop: 2 };
+}
+
+function getAnimalProductionDurationMs(productId) {
+  const product = getAnimalProduct(productId);
+  return Number.isFinite(product?.productionDurationMs) ? product.productionDurationMs : ANIMAL_PEN_CYCLE_DURATION_MS;
+}
+
+function getAnimalOutputProductId(productId) {
+  const product = getAnimalProduct(productId);
+  return typeof product?.outputProductId === "string" && product.outputProductId ? product.outputProductId : "milk";
+}
+
+function grantBarnItemSilently(productId, quantity = 1) {
+  if (quantity <= 0) {
+    return false;
+  }
+
+  state.barn.items[productId] = (state.barn.items[productId] || 0) + quantity;
+  return true;
+}
+
+function getAnimalPenFoodQuantity(productId) {
+  return state.animalPen.food[productId] || 0;
+}
+
+function hasAnimalPenFood(requirement) {
+  return Object.entries(requirement).every(([productId, quantity]) => getAnimalPenFoodQuantity(productId) >= quantity);
+}
+
+function consumeAnimalPenFood(requirement) {
+  for (const [productId, quantity] of Object.entries(requirement)) {
+    const currentQuantity = getAnimalPenFoodQuantity(productId);
+    const nextQuantity = Math.max(0, currentQuantity - quantity);
+    if (nextQuantity > 0) {
+      state.animalPen.food[productId] = nextQuantity;
+    } else {
+      delete state.animalPen.food[productId];
+    }
+  }
+}
+
+function hasActiveAnimalPenCycles() {
+  return state.animalPen.animals.some((animal) => Number.isFinite(animal.readyAt));
+}
+
+function clearAnimalPenTicker() {
+  if (!animalPenTicker) {
+    return;
+  }
+
+  window.clearInterval(animalPenTicker);
+  animalPenTicker = null;
+}
+
+function ensureAnimalPenTicker() {
+  if (animalPenTicker || !hasActiveAnimalPenCycles()) {
+    return;
+  }
+
+  animalPenTicker = window.setInterval(() => {
+    if (!hasActiveAnimalPenCycles()) {
+      clearAnimalPenTicker();
+      return;
+    }
+
+    if (document.body.classList.contains("is-dragging-cell")) {
+      return;
+    }
+
+    const changed = advanceAnimalPenProduction();
+    if (!changed && hasActiveAnimalPenCycles()) {
+      notify();
+    }
+  }, 250);
+}
+
+function advanceAnimalPenProduction() {
+  if (!state.buildings.animalPen) {
+    clearAnimalPenTicker();
+    return false;
+  }
+
+  let changed = false;
+  let producedMilk = false;
+  const now = Date.now();
+
+  for (const animal of state.animalPen.animals) {
+    if (Number.isFinite(animal.readyAt) && animal.readyAt <= now) {
+      animal.readyAt = null;
+      grantBarnItemSilently(getAnimalOutputProductId(animal.productId), 1);
+      producedMilk = true;
+      changed = true;
+    }
+  }
+
+  for (const animal of state.animalPen.animals) {
+    if (Number.isFinite(animal.readyAt)) {
+      continue;
+    }
+
+    const requirement = getAnimalFoodRequirement(animal.productId);
+    if (!hasAnimalPenFood(requirement)) {
+      continue;
+    }
+
+    consumeAnimalPenFood(requirement);
+    animal.readyAt = Date.now() + getAnimalProductionDurationMs(animal.productId);
+    changed = true;
+  }
+
+  if (changed) {
+    saveAnimalPenState(state.animalPen);
+    ensureAnimalPenTicker();
+    if (producedMilk) {
+      state.message = "Milk produced.";
+    }
+    notify();
+    return true;
+  }
+
+  if (!hasActiveAnimalPenCycles()) {
+    clearAnimalPenTicker();
+  }
+
+  return false;
+}
+
+function hydrateAnimalPenState() {
+  if (!state.animalPen || typeof state.animalPen !== "object") {
+    state.animalPen = { food: {}, animals: [] };
+  }
+
+  state.animalPen.food = normalizeAnimalPenFood(state.animalPen.food);
+  state.animalPen.animals = Array.isArray(state.animalPen.animals)
+    ? state.animalPen.animals.filter((animal) => animal && typeof animal === "object")
+    : [];
+
+  advanceAnimalPenProduction();
+}
+
 export function setActiveTool(toolId) {
   state.ui.activeTool = toolId;
   state.inventory.selectedItemId = null;
@@ -764,6 +1017,93 @@ export function getBarnItemQuantity(productId) {
 
 export function isBuildingBuilt(buildingId) {
   return Boolean(state.buildings[buildingId]);
+}
+
+export function canBuildAnimalPen() {
+  return getBarnItemQuantity("wood") >= ANIMAL_PEN_WOOD_COST && getBarnItemQuantity("nails") >= ANIMAL_PEN_NAIL_COST;
+}
+
+export function buildAnimalPen() {
+  if (state.buildings.animalPen) {
+    state.message = "Animal pen already built.";
+    notify();
+    return false;
+  }
+
+  if (!canBuildAnimalPen()) {
+    state.message = `Need ${ANIMAL_PEN_WOOD_COST} wood and ${ANIMAL_PEN_NAIL_COST} nails.`;
+    notify();
+    return false;
+  }
+
+  consumeBarnItem("wood", ANIMAL_PEN_WOOD_COST);
+  consumeBarnItem("nails", ANIMAL_PEN_NAIL_COST);
+  state.buildings.animalPen = true;
+  saveFlag("animalPenBuilt", true);
+  state.message = "Animal pen built.";
+  advanceAnimalPenProduction();
+  notify();
+  return true;
+}
+
+export function addAnimalToPen(productId) {
+  const product = getAnimalProduct(productId);
+  if (!product) {
+    state.message = "That animal cannot go there.";
+    notify();
+    return false;
+  }
+
+  if (!state.buildings.animalPen) {
+    state.message = "Build an animal pen first.";
+    notify();
+    return false;
+  }
+
+  if (!consumeBarnItem(productId, 1)) {
+    state.message = `No ${product.inventoryName} left.`;
+    notify();
+    return false;
+  }
+
+  state.animalPen.animals.push({
+    id: `${product.id}-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`,
+    productId: product.id,
+    readyAt: null,
+  });
+  saveAnimalPenState(state.animalPen);
+  advanceAnimalPenProduction();
+  state.message = `${product.inventoryName} moved to the pen.`;
+  notify();
+  return true;
+}
+
+export function addAnimalFoodToPen(productId, quantity = 1) {
+  const product = getProduct(productId);
+  if (!product || product.id !== "strawCrop") {
+    state.message = "Only straw goes here.";
+    notify();
+    return false;
+  }
+
+  if (!state.buildings.animalPen) {
+    state.message = "Build an animal pen first.";
+    notify();
+    return false;
+  }
+
+  if (!consumeBarnItem(productId, quantity)) {
+    state.message = `No ${product.inventoryName} left.`;
+    notify();
+    return false;
+  }
+
+  state.animalPen.food[productId] = (state.animalPen.food[productId] || 0) + quantity;
+  saveAnimalPenState(state.animalPen);
+  advanceAnimalPenProduction();
+  state.message = "Food added.";
+  notify();
+  return true;
 }
 
 export function addBarnItem(productId, quantity = 1) {
@@ -1138,6 +1478,17 @@ export function deleteCellByKey(key) {
     return true;
   }
 
+  if (key === "animalPen") {
+    state.buildings.animalPen = false;
+    saveFlag("animalPenBuilt", false);
+    state.animalPen = { food: {}, animals: [] };
+    saveAnimalPenState(state.animalPen);
+    clearAnimalPenTicker();
+    state.message = "Animal pen removed.";
+    notify();
+    return true;
+  }
+
   state.ui.hiddenCellKeys.push(key);
   saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
   state.message = "Cell deleted.";
@@ -1156,6 +1507,7 @@ export function restartFarm() {
   state.cells.menu = starterLayout.menu;
   state.cells.build = starterLayout.build;
   state.cells.mill = starterLayout.mill;
+  state.cells.animalPen = starterLayout.animalPen;
   state.cells.tools = starterLayout.tools;
   saveCellPosition("farm", state.cells.farm);
   saveCellPosition("market", state.cells.market);
@@ -1165,6 +1517,7 @@ export function restartFarm() {
   saveCellPosition("menu", state.cells.menu);
   saveCellPosition("build", state.cells.build);
   saveCellPosition("mill", state.cells.mill);
+  saveCellPosition("animalPen", state.cells.animalPen);
   saveCellPosition("tools", state.cells.tools);
   state.farm.plots = [];
   state.farm.enteringPlotIds = [];
@@ -1176,16 +1529,21 @@ export function restartFarm() {
     window.clearInterval(growthTicker);
     growthTicker = null;
   }
+  clearAnimalPenTicker();
   saveFarmPlots(state.farm.plots);
   state.barn.items = {};
+  state.animalPen = { food: {}, animals: [] };
   state.shopping.items = {};
   state.sell.items = {};
   state.buildings.mill = false;
+  state.buildings.animalPen = false;
   state.ui.hiddenCellKeys = [...DEFAULT_HIDDEN_CELL_KEYS];
   state.ui.activeTool = null;
   state.inventory.selectedItemId = null;
   saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
   saveFlag("millBuilt", false);
+  saveFlag("animalPenBuilt", false);
+  saveAnimalPenState(state.animalPen);
   saveFlag("layoutInitialized", true);
   try {
     localStorage.setItem(STORAGE_KEYS.layoutVersion, LAYOUT_SAVE_VERSION);

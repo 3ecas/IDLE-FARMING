@@ -1,7 +1,7 @@
 import { applyStarterLayout, onStateChange, state } from "./state.js";
 
 const GAME_STATE_STORAGE_KEY = "idle-farm-game-state-v1";
-const CELL_POSITION_KEYS = ["farm", "market", "sellMarket", "money", "barn", "menu", "build", "mill", "tools"];
+const CELL_POSITION_KEYS = ["farm", "market", "sellMarket", "money", "barn", "menu", "build", "mill", "animalPen", "tools"];
 const SAVE_DEBOUNCE_MS = 120;
 
 let saveTimer = null;
@@ -85,6 +85,13 @@ export function bootstrapGamePersistence() {
 
   const snapshot = readSavedGameState();
   applySavedGameState(snapshot);
+
+  state.ui.hiddenCellKeys = state.ui.hiddenCellKeys.filter((key) => key !== "menu" && key !== "tools");
+  try {
+    localStorage.setItem("idle-farm-hidden-cells", JSON.stringify(state.ui.hiddenCellKeys));
+  } catch {
+    // Best effort.
+  }
 
   if (!hasStoredCellLayout()) {
     applyStarterLayout(true);

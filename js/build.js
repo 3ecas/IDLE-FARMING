@@ -1,5 +1,7 @@
 import {
+  buildAnimalPen,
   buildMill,
+  canBuildAnimalPen,
   canBuildMill,
   getBarnItemQuantity,
   getCellDragBounds,
@@ -48,6 +50,13 @@ export function mountBuild(container) {
     if (millButton) {
       event.preventDefault();
       buildMill();
+      return;
+    }
+
+    const animalPenButton = event.target.closest("[data-build-animal-pen]");
+    if (animalPenButton) {
+      event.preventDefault();
+      buildAnimalPen();
     }
   });
 
@@ -63,9 +72,11 @@ export function mountBuild(container) {
       state.cells.build.top
     );
     const millBuilt = isBuildingBuilt("mill");
+    const animalPenBuilt = isBuildingBuilt("animalPen");
     const wood = getBarnItemQuantity("wood");
     const nails = getBarnItemQuantity("nails");
     const millLabel = millBuilt ? "Already Built" : "Mill";
+    const animalPenLabel = animalPenBuilt ? "Already Built" : "Cow Pen";
 
     container.innerHTML = `
       <section class="build-cell" data-cell-key="build" data-build-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Build">
@@ -81,6 +92,11 @@ export function mountBuild(container) {
             <span class="build-product__icon" aria-hidden="true">🏭</span>
             <span class="build-product__name">${millLabel}</span>
             ${millBuilt ? "" : `<span class="build-product__cost">Wood ${wood}/15 - Nails ${nails}/5</span>`}
+          </button>
+          <button type="button" class="build-product ${animalPenBuilt || !canBuildAnimalPen() ? "is-disabled" : ""}" data-build-animal-pen aria-disabled="${animalPenBuilt || !canBuildAnimalPen() ? "true" : "false"}">
+            <span class="build-product__icon" aria-hidden="true">🐄</span>
+            <span class="build-product__name">${animalPenLabel}</span>
+            ${animalPenBuilt ? "" : `<span class="build-product__cost">Wood 20/20 - Nails 10/10</span>`}
           </button>
         </div>
       </section>

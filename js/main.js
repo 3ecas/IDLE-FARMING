@@ -1,3 +1,4 @@
+import { mountAnimalPen } from "./animalPen.js";
 import { mountBarn } from "./barn.js";
 import { mountBuild } from "./build.js";
 import { mountMarket } from "./market.js";
@@ -12,7 +13,7 @@ import { bootstrapGamePersistence } from "./persistence.js";
 import { mountTools } from "./tools.js";
 import { getCellSize } from "./layout.js";
 import { clearSelectedInventoryItem } from "./inventory.js";
-import { clearActiveTool, isCellHidden, isToolActive, moveCell, onStateChange, restartFarm, setActiveTool, state } from "./state.js";
+import { clearActiveTool, getStarterLayoutPositions, isCellHidden, isToolActive, moveCell, onStateChange, restartFarm, setActiveTool, showCell, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
 const cellMount = document.getElementById("cell-mount");
@@ -23,6 +24,7 @@ const shoppingMount = document.getElementById("shopping-mount");
 const barnMount = document.getElementById("barn-mount");
 const buildMount = document.getElementById("build-mount");
 const millMount = document.getElementById("mill-mount");
+const animalPenMount = document.getElementById("animal-pen-mount");
 const menuMount = document.getElementById("menu-mount");
 const toolsMount = document.getElementById("tools-mount");
 const restartButton = document.querySelector("[data-restart-farm]");
@@ -40,11 +42,18 @@ mountShopping(shoppingMount);
 mountBarn(barnMount);
 mountBuild(buildMount);
 mountMill(millMount);
+mountAnimalPen(animalPenMount);
 mountMenu(menuMount);
 mountTools(toolsMount);
 mountToolCursor();
 onStateChange(renderStatus);
 renderStatus();
+ensureCorePanelsVisible();
+refreshLayout();
+window.requestAnimationFrame(() => {
+  ensureCorePanelsVisible();
+  refreshLayout();
+});
 
 document.addEventListener("pointerdown", (event) => {
   const interactiveElement = event.target.closest(
@@ -91,6 +100,7 @@ document.addEventListener("keydown", (event) => {
 if (restartButton) {
   restartButton.addEventListener("click", () => {
     restartFarm();
+    ensureCorePanelsVisible();
     refreshLayout();
   });
 }
@@ -131,6 +141,11 @@ function refreshLayout() {
       top += getCellSize("build").height + gap;
     }
 
+    if (state.buildings.animalPen) {
+      moveCell("animalPen", left, top);
+      top += getCellSize("animalPen").height + gap;
+    }
+
     if (!isCellHidden("money")) {
       moveCell("money", left, top);
       top += getCellSize("money").height + gap;
@@ -147,7 +162,7 @@ function refreshLayout() {
     return;
   }
 
-  for (const key of ["market", "sellMarket", "money", "barn", "build", "menu", "tools"]) {
+  for (const key of ["market", "sellMarket", "money", "barn", "build"]) {
     if (isCellHidden(key)) {
       continue;
     }
@@ -156,10 +171,37 @@ function refreshLayout() {
     moveCell(key, position.left, position.top);
   }
 
+  for (const key of ["menu", "tools"]) {
+    if (isCellHidden(key)) {
+      continue;
+    }
+    const position = getStarterLayoutPositions()[key];
+    moveCell(key, position.left, position.top);
+  }
+
   if (state.buildings.mill) {
     const position = state.cells.mill;
     moveCell("mill", position.left, position.top);
   }
+
+  if (state.buildings.animalPen) {
+    const position = state.cells.animalPen;
+    moveCell("animalPen", position.left, position.top);
+  }
+}
+
+function ensureCorePanelsVisible() {
+  const starterLayout = getStarterLayoutPositions();
+
+  if (isCellHidden("menu")) {
+    showCell("menu");
+  }
+  if (isCellHidden("tools")) {
+    showCell("tools");
+  }
+
+  moveCell("menu", starterLayout.menu.left, starterLayout.menu.top);
+  moveCell("tools", starterLayout.tools.left, starterLayout.tools.top);
 }
 
 window.addEventListener("resize", refreshLayout);
