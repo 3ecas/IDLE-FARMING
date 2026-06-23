@@ -1,0 +1,271 @@
+import { getProduct } from "./catalog.js";
+import { getCellDragBounds, isCellHidden, moveCell, onStateChange, plantSeedFromInventoryOnPlot, state, setMessage } from "./state.js";
+import { getInventoryEntries, handleInventorySelection, isSelectedInventoryItem } from "./inventory.js";
+import { mountMovableCell } from "./drag.js";
+
+const DRAG_THRESHOLD = 4;
+const DRAG_SUPPRESS_MS = 300;
+
+function clampToWorkspace(workspace, left, top) {
+  const bounds = getCellDragBounds("barn");
+  const maxLeft = Math.max(0, workspace.clientWidth - bounds.width);
+  const maxTop = Math.max(0, workspace.clientHeight - bounds.height);
+
+  return {
+    left: Math.min(maxLeft, Math.max(0, left)),
+    top: Math.min(maxTop, Math.max(0, top)),
+  };
+}
+
+let barnOpen = false;
+let activeSeedDrag = null;
+const recentlyDraggedSeedIds = new Map();
+
+function markRecentlyDraggedSeed(productId) {
+  recentlyDraggedSeedIds.set(productId, Date.now());
+  window.setTimeout(() => {
+    const recorded = recentlyDraggedSeedIds.get(productId);
+    if (recorded && Date.now() - recorded >= DRAG_SUPPRESS_MS) {
+      recentlyDraggedSeedIds.delete(productId);
+    }
+  }, DRAG_SUPPRESS_MS);
+}
+
+function wasRecentlyDraggedSeed(productId) {
+  const timestamp = recentlyDraggedSeedIds.get(productId);
+  if (!timestamp) {
+    return false;
+  }
+
+  if (Date.now() - timestamp > DRAG_SUPPRESS_MS) {
+    recentlyDraggedSeedIds.delete(productId);
+    return false;
+  }
+
+  return true;
+}
+
+function clearSeedDrag() {
+  if (!activeSeedDrag) {
+    return;
+  }
+
+  activeSeedDrag.button.classList.remove("is-dragging");
+  document.body.classList.remove("is-dragging-cell");
+
+  try {
+    activeSeedDrag.button.releasePointerCapture(activeSeedDrag.pointerId);
+  } catch {
+    // Best effort.
+  }
+
+  if (activeSeedDrag.ghost) {
+    activeSeedDrag.ghost.remove();
+  }
+
+  activeSeedDrag = null;
+}
+
+function createSeedDragGhost(button, left, top) {
+  const ghost = button.cloneNode(true);
+  ghost.classList.add("inventory-item--ghost");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.tabIndex = -1;
+  ghost.draggable = false;
+  ghost.style.position = "fixed";
+  ghost.style.left = `${left}px`;
+  ghost.style.top = `${top}px`;
+  ghost.style.width = `${button.offsetWidth}px`;
+  ghost.style.height = `${button.offsetHeight}px`;
+  ghost.style.pointerEvents = "none";
+  ghost.style.margin = "0";
+  ghost.style.zIndex = "2000";
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
+function getFarmCellFromPoint(x, y) {
+  const element = document.elementFromPoint(x, y);
+  return element?.closest?.("[data-farm-cell]") || null;
+}
+
+export function mountBarn(container) {
+  mountMovableCell(container, {
+    key: "barn",
+    selector: "[data-barn-cell]",
+    onDrop: (_dragSnapshot, finalPosition) => {
+      moveCell("barn", finalPosition.left, finalPosition.top);
+      return true;
+    },
+  });
+
+  container.addEventListener("click", (event) => {
+    const inventoryButton = event.target.closest("[data-inventory-product]");
+    if (inventoryButton) {
+      event.preventDefault();
+      if (wasRecentlyDraggedSeed(inventoryButton.dataset.inventoryProduct)) {
+        return;
+      }
+      handleInventorySelection(inventoryButton.dataset.inventoryProduct);
+      return;
+    }
+
+    const toggle = event.target.closest("[data-barn-toggle]");
+    if (!toggle) {
+      return;
+    }
+
+    event.preventDefault();
+    barnOpen = !barnOpen;
+    setMessage(barnOpen ? "Barn open." : "Barn hidden.");
+    render();
+  });
+
+  container.addEventListener("pointerdown", (event) => {
+    const inventoryButton = event.target.closest("[data-inventory-product]");
+    if (!inventoryButton || event.button !== 0) {
+      return;
+    }
+
+    const productId = inventoryButton.dataset.inventoryProduct;
+    const product = getProduct(productId);
+    if (!product || product.category !== "seeds") {
+      return;
+    }
+
+    activeSeedDrag = {
+      productId,
+      button: inventoryButton,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: inventoryButton.getBoundingClientRect().left,
+      startTop: inventoryButton.getBoundingClientRect().top,
+      ghost: null,
+      dragged: false,
+    };
+
+    try {
+      inventoryButton.setPointerCapture(event.pointerId);
+    } catch {
+      // Best effort.
+    }
+  });
+
+  container.addEventListener("pointermove", (event) => {
+    if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - activeSeedDrag.startX;
+    const deltaY = event.clientY - activeSeedDrag.startY;
+
+    if (!activeSeedDrag.dragged && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) {
+      return;
+    }
+
+    if (!activeSeedDrag.dragged) {
+      activeSeedDrag.dragged = true;
+      activeSeedDrag.button.classList.add("is-dragging");
+      document.body.classList.add("is-dragging-cell");
+      activeSeedDrag.ghost = createSeedDragGhost(
+        activeSeedDrag.button,
+        activeSeedDrag.startLeft,
+        activeSeedDrag.startTop
+      );
+    }
+
+    if (activeSeedDrag.ghost) {
+      activeSeedDrag.ghost.style.left = `${activeSeedDrag.startLeft + deltaX}px`;
+      activeSeedDrag.ghost.style.top = `${activeSeedDrag.startTop + deltaY}px`;
+    }
+
+    event.preventDefault();
+  });
+
+  container.addEventListener("pointerup", (event) => {
+    if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
+      return;
+    }
+
+    const snapshot = activeSeedDrag;
+    const wasDragged = snapshot.dragged;
+    clearSeedDrag();
+
+    if (!wasDragged) {
+      return;
+    }
+
+    markRecentlyDraggedSeed(snapshot.productId);
+
+    const farmCell = getFarmCellFromPoint(event.clientX, event.clientY);
+    if (farmCell) {
+      plantSeedFromInventoryOnPlot(farmCell.dataset.cellKey, snapshot.productId);
+    }
+
+    event.preventDefault();
+  });
+
+  container.addEventListener("pointercancel", () => {
+    clearSeedDrag();
+  });
+
+  function render() {
+    if (isCellHidden("barn")) {
+      container.innerHTML = "";
+      return;
+    }
+
+    const entries = getInventoryEntries();
+    const position = clampToWorkspace(
+      container.closest(".workspace"),
+      state.cells.barn.left,
+      state.cells.barn.top
+    );
+
+    container.innerHTML = `
+      <section class="barn-cell ${barnOpen ? "is-open" : "is-closed"}" data-cell-key="barn" data-barn-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Barn">
+        <div class="barn-header">
+          <span class="barn-title">Barn</span>
+          <button type="button" class="barn-toggle" data-barn-toggle>${barnOpen ? "Hide" : "Show"}</button>
+        </div>
+        <div class="barn-body ${barnOpen ? "" : "is-hidden"}">
+          ${
+            entries.length > 0
+              ? entries
+                  .map(
+                    ({ product, quantity }) => `
+                      ${
+                        product.category === "seeds"
+                          ? `
+                            <button
+                              type="button"
+                              class="inventory-item ${isSelectedInventoryItem(product.id) ? "is-selected" : ""}"
+                              data-inventory-product="${product.id}"
+                              draggable="false"
+                              data-seed-button
+                            >
+                              <span class="inventory-item__name">${product.inventoryName}</span>
+                              <span class="inventory-item__count">x${quantity}</span>
+                            </button>
+                          `
+                          : `
+                            <div class="inventory-item inventory-item--static">
+                              <span class="inventory-item__name">${product.inventoryName}</span>
+                              <span class="inventory-item__count">x${quantity}</span>
+                            </div>
+                          `
+                      }
+                    `
+                  )
+                  .join("")
+              : `<div class="inventory-item inventory-item--empty">Empty</div>`
+          }
+        </div>
+      </section>
+    `;
+  }
+
+  onStateChange(render);
+  render();
+}

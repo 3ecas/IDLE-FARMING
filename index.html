@@ -8,26 +8,21 @@
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
-    <div class="background-orb background-orb-left"></div>
-    <div class="background-orb background-orb-right"></div>
-
-    <main class="game-shell">
-      <header class="hero panel">
-        <div>
-          <p class="eyebrow">Mini Farm</p>
-          <h1>Little Wheat Patch</h1>
-          <p class="lede">
-            Rearrange your farm like a little desktop, expand the land, and keep the plot groups tidy.
-          </p>
-        </div>
-        <div class="hero-badge">
-          <span class="badge-icon">&#127806;</span>
-          <span>Drag, drop, and organize</span>
-        </div>
-      </header>
-
-      <section id="status" class="panel status-panel" aria-live="polite"></section>
-      <section id="farm-grid" class="farm-grid" aria-label="Farm layout grid"></section>
+      <main class="scene">
+      <div class="grid-overlay"></div>
+      <section id="workspace" class="workspace">
+        <div id="cell-mount" class="cell-mount"></div>
+        <div id="market-mount" class="cell-mount"></div>
+        <div id="money-mount" class="cell-mount"></div>
+        <div id="shopping-mount" class="cell-mount"></div>
+        <div id="barn-mount" class="cell-mount"></div>
+        <div id="tools-mount" class="cell-mount"></div>
+      </section>
+      <div class="farm-controls">
+        <button type="button" class="restart-farm" data-restart-farm>Restart farm</button>
+        <div class="delete-zone" data-delete-zone>Delete</div>
+      </div>
+      <div id="status" class="status"></div>
     </main>
   </body>
 </html>

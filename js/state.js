@@ -1,52 +1,387 @@
+import { getProduct } from "./catalog.js";
+import { getCellSize } from "./layout.js";
+
 const listeners = new Set();
 const growthTimers = new Map();
+const GRID_SIZE = 24;
+const FARM_PLOT_SIZE = 72;
+const FARM_PLOT_SPAWN_GAP = 0;
+const FARM_PLOT_BASE_COST = 10;
+const FARM_PLOT_PRICE_GROWTH = 1.75;
+const FARM_PLOT_STORAGE_KEY = "idle-farm-farm-plots-v2";
+const FARM_PLOT_SAVE_VERSION = "4";
+const FARM_GROWTH_DURATION_MS = 10000;
+const FARM_STAGE_EMPTY = "empty";
+const FARM_STAGE_PLANTED = "planted";
+const FARM_STAGE_GROWING = "growing";
+const FARM_STAGE_MATURE = "mature";
+const LAYOUT_SAVE_VERSION = "2";
+const STARTING_COINS = 5;
 
-let plotCounter = 5;
-let groupCounter = 1;
-
-export const state = {
-  coins: 5,
-  message: "Buy seeds, place plots, water crops, and harvest wheat.",
-  selectedSeed: null,
-  inventory: {
-    wheatSeed: 0,
-    landDeeds: 0,
-  },
-  warehouse: {
-    wheat: 0,
-  },
-  layoutOrder: ["land-plots", "warehouse", "market", "tools"],
-  plots: {
-    "plot-1": createPlot("plot-1"),
-    "plot-2": createPlot("plot-2"),
-    "plot-3": createPlot("plot-3"),
-    "plot-4": createPlot("plot-4"),
-    "plot-5": createPlot("plot-5"),
-  },
-  board: [
-    {
-      id: "group-1",
-      type: "group",
-      plotIds: ["plot-1", "plot-2", "plot-3", "plot-4"],
-    },
-    {
-      id: "slot-1",
-      type: "single",
-      plotIds: ["plot-5"],
-    },
-  ],
+const STORAGE_KEYS = {
+  farm: "idle-farm-farm-cell-position",
+  market: "idle-farm-market-cell-position",
+  money: "idle-farm-money-cell-position",
+  barn: "idle-farm-barn-cell-position",
+  tools: "idle-farm-tools-cell-position",
+  farmPlots: "idle-farm-farm-plots",
+  hiddenCells: "idle-farm-hidden-cells",
+  layoutInitialized: "idle-farm-layout-initialized",
+  layoutVersion: "idle-farm-layout-version",
+  farmPlotSaveVersion: "idle-farm-farm-plots-version",
 };
 
-function createPlot(id) {
+const DEFAULT_CELL_POSITIONS = {
+  farm: readCellPosition("farm", { left: 48, top: 48 }),
+  market: readCellPosition("market", { left: 144, top: 48 }),
+  money: readCellPosition("money", { left: 48, top: 160 }),
+  barn: readCellPosition("barn", { left: 320, top: 48 }),
+  tools: readCellPosition("tools", { left: 48, top: 240 }),
+};
+
+function snapToGrid(value) {
+  return Math.round(value / GRID_SIZE) * GRID_SIZE;
+}
+
+function readCellPosition(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS[key]) || "{}");
+    return {
+      left: Number.isFinite(parsed.left) ? parsed.left : fallback.left,
+      top: Number.isFinite(parsed.top) ? parsed.top : fallback.top,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveCellPosition(key, position) {
+  try {
+    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(position));
+  } catch {
+    // Best effort.
+  }
+}
+
+function readNumber(key, fallback) {
+  try {
+    const parsed = Number(localStorage.getItem(STORAGE_KEYS[key]));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveNumber(key, value) {
+  try {
+    localStorage.setItem(STORAGE_KEYS[key], String(value));
+  } catch {
+    // Best effort.
+  }
+}
+
+function readFlag(key, fallback = false) {
+  try {
+    const value = localStorage.getItem(STORAGE_KEYS[key]);
+    if (value === null) {
+      return fallback;
+    }
+    return value === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveFlag(key, value) {
+  try {
+    localStorage.setItem(STORAGE_KEYS[key], value ? "1" : "0");
+  } catch {
+    // Best effort.
+  }
+}
+
+function readStringArray(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS[key]) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStringArray(key, values) {
+  try {
+    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(values));
+  } catch {
+    // Best effort.
+  }
+}
+
+function readFarmPlots() {
+  const storedVersion = localStorage.getItem(STORAGE_KEYS.farmPlotSaveVersion);
+  if (storedVersion !== FARM_PLOT_SAVE_VERSION) {
+    const plots = [];
+    saveFarmPlots(plots);
+    return plots;
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FARM_PLOT_STORAGE_KEY) || "null");
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const plots = [];
+      for (let index = 0; index < parsed.length; index += 1) {
+        const normalized = normalizeFarmPlot(parsed[index], index, plots);
+        if (normalized) {
+          plots.push(normalized);
+        }
+      }
+      saveFarmPlots(plots);
+      return plots;
+    }
+  } catch {
+    // Fall back to legacy storage.
+  }
+
+  const plots = [];
+  saveFarmPlots(plots);
+  return plots;
+}
+
+function saveFarmPlots(plots) {
+  try {
+    localStorage.setItem(FARM_PLOT_STORAGE_KEY, JSON.stringify(plots));
+    saveNumber("farmPlots", plots.length);
+    localStorage.setItem(STORAGE_KEYS.farmPlotSaveVersion, FARM_PLOT_SAVE_VERSION);
+  } catch {
+    // Best effort.
+  }
+}
+
+function getWorkspaceSize() {
+  const workspace = document.getElementById("workspace");
   return {
-    id,
-    crop: null,
-    stage: 0,
-    watered: false,
-    growing: false,
-    ready: false,
+    width: workspace?.clientWidth || window.innerWidth || 1024,
+    height: workspace?.clientHeight || window.innerHeight || 768,
   };
 }
+
+function getStarterLayoutPositions() {
+  const workspace = getWorkspaceSize();
+  const gap = 16;
+  const barnSize = getCellSize("barn");
+  const marketSize = getCellSize("market");
+  const moneySize = getCellSize("money");
+  const toolsSize = getCellSize("tools");
+  const totalWidth = barnSize.width + gap + marketSize.width + gap + moneySize.width;
+  const rowHeight = Math.max(barnSize.height, marketSize.height, moneySize.height);
+  const startLeft = Math.max(16, Math.round((workspace.width - totalWidth) / 2));
+  const top = Math.max(16, Math.round((workspace.height - rowHeight) / 2));
+  const toolsTop = Math.min(workspace.height - toolsSize.height - 16, top + rowHeight + gap);
+
+  return {
+    barn: { left: startLeft, top },
+    market: { left: startLeft + barnSize.width + gap, top },
+    money: { left: startLeft + barnSize.width + gap + marketSize.width + gap, top },
+    tools: { left: startLeft, top: Math.max(16, toolsTop) },
+  };
+}
+
+function getObstacleRects(excludePlotId = null) {
+  const elements = Array.from(document.querySelectorAll("[data-cell-key]"));
+  if (elements.length > 0) {
+    return elements
+      .filter((element) => element.dataset.cellKey !== excludePlotId)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+  }
+
+  return [
+    {
+      left: DEFAULT_CELL_POSITIONS.market.left,
+      top: DEFAULT_CELL_POSITIONS.market.top,
+      width: getCellSize("market").width,
+      height: getCellSize("market").height,
+    },
+    {
+      left: DEFAULT_CELL_POSITIONS.money.left,
+      top: DEFAULT_CELL_POSITIONS.money.top,
+      width: getCellSize("money").width,
+      height: getCellSize("money").height,
+    },
+    {
+      left: DEFAULT_CELL_POSITIONS.barn.left,
+      top: DEFAULT_CELL_POSITIONS.barn.top,
+      width: getCellSize("barn").width,
+      height: getCellSize("barn").height,
+    },
+  ];
+}
+
+function rectsOverlapWithGap(left, top, width, height, rect, gap) {
+  return (
+    left < rect.left + rect.width + gap &&
+    left + width + gap > rect.left &&
+    top < rect.top + rect.height + gap &&
+    top + height + gap > rect.top
+  );
+}
+
+function isFarmPlotPositionFree(candidate, plots, excludePlotId = null) {
+  const obstacles = getObstacleRects(excludePlotId).concat(
+    plots
+      .filter((plot) => plot.id !== excludePlotId)
+      .map((plot) => ({
+        left: plot.left,
+        top: plot.top,
+        width: FARM_PLOT_SIZE,
+        height: FARM_PLOT_SIZE,
+      }))
+  );
+
+  return obstacles.every(
+    (rect) => !rectsOverlapWithGap(
+      candidate.left,
+      candidate.top,
+      FARM_PLOT_SIZE,
+      FARM_PLOT_SIZE,
+      rect,
+      FARM_PLOT_SPAWN_GAP
+    )
+  );
+}
+
+function clampFarmPlotToWorkspace(position) {
+  const workspace = getWorkspaceSize();
+  const maxLeft = Math.max(0, workspace.width - FARM_PLOT_SIZE);
+  const maxTop = Math.max(0, workspace.height - FARM_PLOT_SIZE);
+
+  return {
+    left: snapToGrid(Math.min(maxLeft, Math.max(0, position.left))),
+    top: snapToGrid(Math.min(maxTop, Math.max(0, position.top))),
+  };
+}
+
+function createFarmPlotRecord(id, preferredPosition, existingPlots) {
+  const workspace = getWorkspaceSize();
+  const maxLeft = Math.max(0, workspace.width - FARM_PLOT_SIZE);
+  const maxTop = Math.max(0, workspace.height - FARM_PLOT_SIZE);
+
+  if (preferredPosition) {
+    const clampedPreferred = clampFarmPlotToWorkspace(preferredPosition);
+    if (isFarmPlotPositionFree(clampedPreferred, existingPlots, id)) {
+      return {
+        id,
+        left: clampedPreferred.left,
+        top: clampedPreferred.top,
+      };
+    }
+  }
+
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    const candidate = clampFarmPlotToWorkspace({
+      left: snapToGrid(Math.random() * maxLeft),
+      top: snapToGrid(Math.random() * maxTop),
+    });
+
+    if (isFarmPlotPositionFree(candidate, existingPlots, id)) {
+      return {
+        id,
+        left: candidate.left,
+        top: candidate.top,
+      };
+    }
+  }
+
+  const gridColumns = Math.max(1, Math.floor(maxLeft / GRID_SIZE));
+  const gridRows = Math.max(1, Math.floor(maxTop / GRID_SIZE));
+  for (let row = 0; row <= gridRows; row += 1) {
+    for (let column = 0; column <= gridColumns; column += 1) {
+      const candidate = clampFarmPlotToWorkspace({
+        left: snapToGrid(column * GRID_SIZE),
+        top: snapToGrid(row * GRID_SIZE),
+      });
+      if (isFarmPlotPositionFree(candidate, existingPlots, id)) {
+        return {
+          id,
+          left: candidate.left,
+          top: candidate.top,
+        };
+      }
+    }
+  }
+
+  const fallbackPosition = clampFarmPlotToWorkspace({
+    left: DEFAULT_CELL_POSITIONS.farm.left,
+    top: DEFAULT_CELL_POSITIONS.farm.top,
+  });
+  return {
+    id,
+    left: fallbackPosition.left,
+    top: fallbackPosition.top,
+  };
+}
+
+function normalizeFarmPlot(plot, index, existingPlots = []) {
+  if (!plot) {
+    return null;
+  }
+
+  const id = typeof plot.id === "string" && plot.id ? plot.id : `farm-plot-${index}`;
+  const preferredPosition = {
+    left: Number.isFinite(plot.left) ? plot.left : DEFAULT_CELL_POSITIONS.farm.left + index * GRID_SIZE,
+    top: Number.isFinite(plot.top) ? plot.top : DEFAULT_CELL_POSITIONS.farm.top + index * GRID_SIZE,
+  };
+  const position = createFarmPlotRecord(id, preferredPosition, existingPlots);
+  const stage = plot.stage === FARM_STAGE_PLANTED || plot.stage === FARM_STAGE_GROWING || plot.stage === FARM_STAGE_MATURE
+    ? plot.stage
+    : FARM_STAGE_EMPTY;
+  return {
+    id,
+    left: position.left,
+    top: position.top,
+    cropId: typeof plot.cropId === "string" ? plot.cropId : null,
+    stage,
+    growCompleteAt: Number.isFinite(plot.growCompleteAt) ? plot.growCompleteAt : null,
+  };
+}
+
+export const state = {
+  coins: STARTING_COINS,
+  cells: {
+    farm: DEFAULT_CELL_POSITIONS.farm,
+    market: DEFAULT_CELL_POSITIONS.market,
+    money: DEFAULT_CELL_POSITIONS.money,
+    barn: DEFAULT_CELL_POSITIONS.barn,
+    tools: DEFAULT_CELL_POSITIONS.tools,
+  },
+  farm: {
+    plots: readFarmPlots(),
+    enteringPlotIds: [],
+  },
+  ui: {
+    hiddenCellKeys: readStringArray("hiddenCells"),
+    activeTool: null,
+  },
+  inventory: {
+    selectedItemId: null,
+  },
+  shopping: {
+    items: {},
+  },
+  barn: {
+    items: {},
+  },
+  message: "Drag the cell.",
+};
+
+hydratePlotGrowthTimers();
 
 function notify() {
   for (const listener of listeners) {
@@ -54,358 +389,531 @@ function notify() {
   }
 }
 
-function getPlot(plotId) {
-  return state.plots[plotId] || null;
-}
-
-function getBoardEntryForPlotId(plotId) {
-  return state.board.find((entry) => entry.plotIds.includes(plotId)) || null;
-}
-
-function clearPlotTimers(plotId) {
-  const timers = growthTimers.get(plotId);
-  if (!timers) {
-    return;
-  }
-
-  for (const timer of timers) {
-    clearTimeout(timer);
-  }
-  growthTimers.delete(plotId);
-}
-
-function schedulePlotGrowth(plotId, callback, delay) {
-  const timer = setTimeout(() => {
-    const timers = growthTimers.get(plotId);
-    if (timers) {
-      timers.delete(timer);
-      if (timers.size === 0) {
-        growthTimers.delete(plotId);
-      }
-    }
-
-    callback();
-    notify();
-  }, delay);
-
-  if (!growthTimers.has(plotId)) {
-    growthTimers.set(plotId, new Set());
-  }
-
-  growthTimers.get(plotId).add(timer);
-}
-
-function addSinglePlotEntry(plotId) {
-  state.board.push({
-    id: `slot-${state.board.length + 1}`,
-    type: "single",
-    plotIds: [plotId],
-  });
-}
-
-function normalizeBoard() {
-  state.board = state.board.filter((entry) => entry.plotIds.length > 0);
-
-  for (const entry of state.board) {
-    if (entry.type === "single" && entry.plotIds.length > 1) {
-      entry.type = "group";
-      entry.id = `group-${groupCounter++}`;
-    }
-  }
-}
-
-function startGrowth(plotId) {
-  const plot = getPlot(plotId);
-  if (!plot || !plot.crop || plot.growing) {
-    return;
-  }
-
-  plot.growing = true;
-  state.message = "The wheat is soaking up the water...";
-
-  schedulePlotGrowth(
-    plotId,
-    () => {
-      const current = getPlot(plotId);
-      if (!current || !current.crop) {
-        return;
-      }
-      current.stage = 1;
-      state.message = "Tiny sprouts are peeking out!";
-    },
-    650
-  );
-
-  schedulePlotGrowth(
-    plotId,
-    () => {
-      const current = getPlot(plotId);
-      if (!current || !current.crop) {
-        return;
-      }
-      current.stage = 2;
-      state.message = "The wheat is growing bigger!";
-    },
-    1350
-  );
-
-  schedulePlotGrowth(
-    plotId,
-    () => {
-      const current = getPlot(plotId);
-      if (!current || !current.crop) {
-        return;
-      }
-      current.stage = 3;
-      current.growing = false;
-      current.ready = true;
-      state.message = "The wheat is ready to harvest!";
-    },
-    2100
-  );
-}
-
-function setPlotEmpty(plotId) {
-  const plot = getPlot(plotId);
-  if (!plot) {
-    return;
-  }
-
-  plot.crop = null;
-  plot.stage = 0;
-  plot.watered = false;
-  plot.growing = false;
-  plot.ready = false;
-  clearPlotTimers(plotId);
-}
-
 export function onStateChange(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function buyWheatSeed() {
-  if (state.coins < 1) {
-    state.message = "You need 1 coin to buy a wheat seed.";
-    notify();
+export function setMessage(message) {
+  state.message = message;
+  notify();
+}
+
+export function addCoins(amount) {
+  state.coins += amount;
+  state.message = `+${amount} coins.`;
+  notify();
+}
+
+export function isCellHidden(key) {
+  return state.ui.hiddenCellKeys.includes(key);
+}
+
+export function hideCell(key) {
+  if (isCellHidden(key)) {
     return false;
   }
 
-  state.coins -= 1;
-  state.inventory.wheatSeed += 1;
-  state.message = "You bought a wheat seed.";
+  state.ui.hiddenCellKeys.push(key);
+  saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
   notify();
   return true;
 }
 
-export function buyLandDeed() {
-  if (state.coins < 3) {
-    state.message = "You need 3 coins to buy a land plot deed.";
-    notify();
+export function showCell(key) {
+  const index = state.ui.hiddenCellKeys.indexOf(key);
+  if (index === -1) {
     return false;
   }
 
-  state.coins -= 3;
-  state.inventory.landDeeds += 1;
-  state.message = "You bought a land plot deed. Drag it to the land grid.";
+  state.ui.hiddenCellKeys.splice(index, 1);
+  saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
   notify();
   return true;
 }
 
-export function selectWheatSeed() {
-  if (state.inventory.wheatSeed <= 0) {
-    state.message = "You do not have any wheat seeds yet.";
-    notify();
+export function moveCell(key, left, top) {
+  state.cells[key].left = left;
+  state.cells[key].top = top;
+  saveCellPosition(key, state.cells[key]);
+  notify();
+}
+
+export function applyStarterLayout(force = false) {
+  const storedLayoutVersion = localStorage.getItem(STORAGE_KEYS.layoutVersion);
+  if (!force && storedLayoutVersion === LAYOUT_SAVE_VERSION) {
     return false;
   }
 
-  state.selectedSeed = "wheatSeed";
-  state.message = "Seed selected. Click an empty plot to plant it.";
+  const layout = getStarterLayoutPositions();
+  state.cells.market = layout.market;
+  state.cells.money = layout.money;
+  state.cells.barn = layout.barn;
+  state.cells.tools = layout.tools;
+  saveCellPosition("market", state.cells.market);
+  saveCellPosition("money", state.cells.money);
+  saveCellPosition("barn", state.cells.barn);
+  saveCellPosition("tools", state.cells.tools);
+  saveFlag("layoutInitialized", true);
+  try {
+    localStorage.setItem(STORAGE_KEYS.layoutVersion, LAYOUT_SAVE_VERSION);
+  } catch {
+    // Best effort.
+  }
   notify();
   return true;
 }
 
-export function plantSelectedSeed(plotId) {
-  const plot = getPlot(plotId);
+export function getCellDragBounds(key) {
+  return getCellSize(key);
+}
+
+function getPlotById(plotId) {
+  return state.farm.plots.find((plot) => plot.id === plotId) || null;
+}
+
+function clearPlotGrowthTimer(plotId) {
+  const timerId = growthTimers.get(plotId);
+  if (timerId) {
+    window.clearTimeout(timerId);
+    growthTimers.delete(plotId);
+  }
+}
+
+function markPlotMature(plot) {
   if (!plot) {
     return false;
   }
 
-  if (state.selectedSeed !== "wheatSeed") {
-    state.message = "Select a wheat seed from the market first.";
+  clearPlotGrowthTimer(plot.id);
+  plot.stage = FARM_STAGE_MATURE;
+  plot.growCompleteAt = null;
+  saveFarmPlots(state.farm.plots);
+  notify();
+  return true;
+}
+
+function schedulePlotGrowth(plot) {
+  if (!plot || plot.stage !== FARM_STAGE_GROWING || !Number.isFinite(plot.growCompleteAt)) {
+    return;
+  }
+
+  clearPlotGrowthTimer(plot.id);
+  const remaining = Math.max(0, plot.growCompleteAt - Date.now());
+  if (remaining === 0) {
+    markPlotMature(plot);
+    return;
+  }
+
+  const timerId = window.setTimeout(() => {
+    growthTimers.delete(plot.id);
+    markPlotMature(plot);
+  }, remaining);
+  growthTimers.set(plot.id, timerId);
+}
+
+function hydratePlotGrowthTimers() {
+  for (const plot of state.farm.plots) {
+    if (plot.stage === FARM_STAGE_GROWING && Number.isFinite(plot.growCompleteAt)) {
+      schedulePlotGrowth(plot);
+    } else if (plot.stage === FARM_STAGE_GROWING) {
+      plot.stage = FARM_STAGE_PLANTED;
+      plot.growCompleteAt = null;
+    }
+  }
+}
+
+function saveFarmState() {
+  saveFarmPlots(state.farm.plots);
+}
+
+export function setActiveTool(toolId) {
+  state.ui.activeTool = toolId;
+  state.message = toolId === "water" ? "Water tool selected." : "Harvest tool selected.";
+  notify();
+}
+
+export function clearActiveTool() {
+  if (!state.ui.activeTool) {
+    return false;
+  }
+
+  state.ui.activeTool = null;
+  state.message = "Tool cleared.";
+  notify();
+  return true;
+}
+
+export function isToolActive(toolId) {
+  return state.ui.activeTool === toolId;
+}
+
+export function selectInventoryItem(productId) {
+  const product = getProduct(productId);
+  if (!product) {
+    return false;
+  }
+
+  state.inventory.selectedItemId = productId;
+  state.ui.activeTool = null;
+  state.message = `${product.inventoryName} selected.`;
+  notify();
+  return true;
+}
+
+export function clearInventorySelection() {
+  if (!state.inventory.selectedItemId) {
+    return false;
+  }
+
+  state.inventory.selectedItemId = null;
+  notify();
+  return true;
+}
+
+export function isInventoryItemSelected(productId) {
+  return state.inventory.selectedItemId === productId;
+}
+
+export function getBarnItemQuantity(productId) {
+  return state.barn.items[productId] || 0;
+}
+
+export function addBarnItem(productId, quantity = 1) {
+  if (quantity <= 0) {
+    return false;
+  }
+
+  state.barn.items[productId] = (state.barn.items[productId] || 0) + quantity;
+  notify();
+  return true;
+}
+
+export function consumeBarnItem(productId, quantity = 1) {
+  const currentQuantity = getBarnItemQuantity(productId);
+  if (currentQuantity < quantity) {
+    return false;
+  }
+
+  const nextQuantity = currentQuantity - quantity;
+  if (nextQuantity > 0) {
+    state.barn.items[productId] = nextQuantity;
+  } else {
+    delete state.barn.items[productId];
+  }
+
+  if (state.inventory.selectedItemId === productId && nextQuantity === 0) {
+    state.inventory.selectedItemId = null;
+  }
+
+  notify();
+  return true;
+}
+
+export function plantSelectedSeedOnPlot(plotId) {
+  return plantSeedOnPlot(plotId, state.inventory.selectedItemId);
+}
+
+export function plantSeedFromInventoryOnPlot(plotId, seedId) {
+  return plantSeedOnPlot(plotId, seedId);
+}
+
+function plantSeedOnPlot(plotId, seedId) {
+  const selectedProduct = seedId ? getProduct(seedId) : null;
+  if (!seedId || !selectedProduct || selectedProduct.category !== "seeds") {
+    state.message = "Select a seed first.";
     notify();
     return false;
   }
 
-  if (state.inventory.wheatSeed <= 0) {
-    state.selectedSeed = null;
-    state.message = "That seed stack is empty now.";
+  const plot = getPlotById(plotId);
+  if (!plot || plot.cropId) {
+    state.message = "Plot is occupied.";
     notify();
     return false;
   }
 
-  if (plot.crop) {
-    state.message = "That plot already has a crop.";
+  if (!consumeBarnItem(seedId, 1)) {
+    state.message = `No ${selectedProduct.inventoryName} left.`;
     notify();
     return false;
   }
 
-  state.inventory.wheatSeed -= 1;
-  state.selectedSeed = null;
-  plot.crop = "wheat";
-  plot.stage = 0;
-  plot.watered = false;
-  plot.growing = false;
-  plot.ready = false;
-  state.message = `Planted wheat in ${plotId}.`;
+  plot.cropId = seedId;
+  plot.stage = FARM_STAGE_PLANTED;
+  plot.growCompleteAt = null;
+  clearPlotGrowthTimer(plot.id);
+  saveFarmState();
+  state.message = `${selectedProduct.inventoryName} planted.`;
   notify();
   return true;
 }
 
 export function waterPlot(plotId) {
-  const plot = getPlot(plotId);
+  const plot = getPlotById(plotId);
+  if (!plot || !plot.cropId || plot.stage === FARM_STAGE_MATURE) {
+    state.message = "Nothing to water.";
+    notify();
+    return false;
+  }
+
+  plot.stage = FARM_STAGE_GROWING;
+  plot.growCompleteAt = Date.now() + FARM_GROWTH_DURATION_MS;
+  saveFarmState();
+  schedulePlotGrowth(plot);
+  state.message = "Watered.";
+  notify();
+  return true;
+}
+
+export function harvestPlot(plotId) {
+  const plot = getPlotById(plotId);
+  if (!plot || plot.stage !== FARM_STAGE_MATURE || !plot.cropId) {
+    state.message = "Not ready yet.";
+    notify();
+    return false;
+  }
+
+  const cropProduct = getProduct(plot.cropId);
+  const harvestProductId = cropProduct?.cropProductId || plot.cropId;
+  addBarnItem(harvestProductId, 1);
+  addCoins(2);
+  plot.cropId = null;
+  plot.stage = FARM_STAGE_EMPTY;
+  plot.growCompleteAt = null;
+  clearPlotGrowthTimer(plot.id);
+  saveFarmState();
+  state.message = "Harvested.";
+  notify();
+  return true;
+}
+
+export function getNextLandPlotCost() {
+  const ownedPlotCount = Math.max(0, state.farm.plots.length);
+  if (ownedPlotCount === 0) {
+    return 0;
+  }
+
+  return Math.ceil(FARM_PLOT_BASE_COST * Math.pow(FARM_PLOT_PRICE_GROWTH, ownedPlotCount - 1));
+}
+
+function clearFarmPlotAnimation(plotId) {
+  const index = state.farm.enteringPlotIds.indexOf(plotId);
+  if (index === -1) {
+    return;
+  }
+
+  state.farm.enteringPlotIds.splice(index, 1);
+  notify();
+}
+
+function markFarmPlotEntering(plotId) {
+  if (!state.farm.enteringPlotIds.includes(plotId)) {
+    state.farm.enteringPlotIds.push(plotId);
+    notify();
+  }
+
+  window.setTimeout(() => clearFarmPlotAnimation(plotId), 500);
+}
+
+export function moveFarmPlot(plotId, left, top) {
+  const plot = state.farm.plots.find((entry) => entry.id === plotId);
   if (!plot) {
     return false;
   }
 
-  if (!plot.crop) {
-    state.message = "There is nothing in that plot to water.";
-    notify();
-    return false;
-  }
-
-  if (plot.ready) {
-    state.message = "That wheat is already ready to harvest.";
-    notify();
-    return false;
-  }
-
-  if (plot.watered) {
-    state.message = "That wheat is already watered.";
-    notify();
-    return false;
-  }
-
-  plot.watered = true;
-  startGrowth(plotId);
+  plot.left = left;
+  plot.top = top;
+  saveFarmPlots(state.farm.plots);
   notify();
   return true;
 }
 
-export function harvestWheat(plotId) {
-  const plot = getPlot(plotId);
-  if (!plot) {
-    return false;
-  }
+export function spawnFarmPlot(preferredPosition = null) {
+  const id = `farm-plot-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const plotPosition = createFarmPlotRecord(id, preferredPosition, state.farm.plots);
+  const plot = {
+    id,
+    left: plotPosition.left,
+    top: plotPosition.top,
+    cropId: null,
+    stage: FARM_STAGE_EMPTY,
+    growCompleteAt: null,
+  };
+  state.farm.plots.push(plot);
+  saveFarmState();
+  markFarmPlotEntering(plot.id);
+  return plot;
+}
 
-  if (!plot.crop) {
-    state.message = "There is nothing here to harvest.";
+export function deleteCellByKey(key) {
+  const farmPlotIndex = state.farm.plots.findIndex((plot) => plot.id === key);
+  if (farmPlotIndex !== -1) {
+    clearPlotGrowthTimer(key);
+    state.farm.plots.splice(farmPlotIndex, 1);
+    state.farm.enteringPlotIds = state.farm.enteringPlotIds.filter((plotId) => plotId !== key);
+    saveFarmPlots(state.farm.plots);
+    state.message = "Plot deleted.";
     notify();
-    return false;
-  }
-
-  if (!plot.ready) {
-    state.message = "That wheat is not ready yet.";
-    notify();
-    return false;
-  }
-
-  state.warehouse.wheat += 1;
-  setPlotEmpty(plotId);
-  state.message = "Harvest complete! The wheat is now in the warehouse.";
-  notify();
-  return true;
-}
-
-export function placePurchasedLandPlot() {
-  if (state.inventory.landDeeds <= 0) {
-    state.message = "Buy a land deed first.";
-    notify();
-    return false;
-  }
-
-  state.inventory.landDeeds -= 1;
-  plotCounter += 1;
-  const plotId = `plot-${plotCounter}`;
-  state.plots[plotId] = createPlot(plotId);
-  addSinglePlotEntry(plotId);
-  state.message = `Placed a new land plot: ${plotId}.`;
-  notify();
-  return true;
-}
-
-export function moveWidget(widgetId, targetWidgetId) {
-  const fromIndex = state.layoutOrder.indexOf(widgetId);
-  const toIndex = state.layoutOrder.indexOf(targetWidgetId);
-
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
-    return false;
-  }
-
-  const [moved] = state.layoutOrder.splice(fromIndex, 1);
-  state.layoutOrder.splice(toIndex, 0, moved);
-  notify();
-  return true;
-}
-
-export function getPlotBoard() {
-  return state.board;
-}
-
-export function getPlot(plotId) {
-  return getPlot(plotId);
-}
-
-export function getBoardEntryForPlot(plotId) {
-  return getBoardEntryForPlotId(plotId);
-}
-
-export function groupPlots(sourcePlotId, targetPlotId) {
-  const sourceEntry = getBoardEntryForPlotId(sourcePlotId);
-  const targetEntry = getBoardEntryForPlotId(targetPlotId);
-
-  if (!sourceEntry || !targetEntry || sourcePlotId === targetPlotId || sourceEntry === targetEntry) {
-    return false;
-  }
-
-  sourceEntry.plotIds = sourceEntry.plotIds.filter((id) => id !== sourcePlotId);
-  if (sourceEntry.plotIds.length === 0) {
-    state.board = state.board.filter((entry) => entry !== sourceEntry);
-  }
-
-  if (!targetEntry.plotIds.includes(sourcePlotId)) {
-    targetEntry.plotIds.push(sourcePlotId);
-  }
-
-  if (targetEntry.type === "single" && targetEntry.plotIds.length > 1) {
-    targetEntry.type = "group";
-    targetEntry.id = `group-${groupCounter++}`;
-  }
-
-  normalizeBoard();
-  notify();
-  return true;
-}
-
-export function detachPlot(plotId) {
-  const entry = getBoardEntryForPlotId(plotId);
-  if (!entry) {
-    return false;
-  }
-
-  if (entry.type === "single") {
     return true;
   }
 
-  entry.plotIds = entry.plotIds.filter((id) => id !== plotId);
-  addSinglePlotEntry(plotId);
-
-  if (entry.plotIds.length === 1) {
-    entry.type = "single";
-    entry.id = `slot-${state.board.length + 1}`;
+  if (isCellHidden(key)) {
+    return false;
   }
 
-  normalizeBoard();
+  state.ui.hiddenCellKeys.push(key);
+  saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
+  state.message = "Cell deleted.";
   notify();
   return true;
+}
+
+export function restartFarm() {
+  state.coins = STARTING_COINS;
+  state.cells.farm = { left: 48, top: 48 };
+  const starterLayout = getStarterLayoutPositions();
+  state.cells.market = starterLayout.market;
+  state.cells.money = starterLayout.money;
+  state.cells.barn = starterLayout.barn;
+  state.cells.tools = starterLayout.tools;
+  saveCellPosition("farm", state.cells.farm);
+  saveCellPosition("market", state.cells.market);
+  saveCellPosition("money", state.cells.money);
+  saveCellPosition("barn", state.cells.barn);
+  saveCellPosition("tools", state.cells.tools);
+  state.farm.plots = [];
+  state.farm.enteringPlotIds = [];
+  for (const timerId of growthTimers.values()) {
+    window.clearTimeout(timerId);
+  }
+  growthTimers.clear();
+  saveFarmPlots(state.farm.plots);
+  state.barn.items = {};
+  state.shopping.items = {};
+  state.ui.hiddenCellKeys = [];
+  state.ui.activeTool = null;
+  state.inventory.selectedItemId = null;
+  saveStringArray("hiddenCells", state.ui.hiddenCellKeys);
+  saveFlag("layoutInitialized", true);
+  try {
+    localStorage.setItem(STORAGE_KEYS.layoutVersion, LAYOUT_SAVE_VERSION);
+  } catch {
+    // Best effort.
+  }
+  state.message = "Farm restarted.";
+  notify();
+}
+
+export function addShoppingItem(productId) {
+  const product = getProduct(productId);
+  if (!product) {
+    return false;
+  }
+
+  state.shopping.items[productId] = (state.shopping.items[productId] || 0) + 1;
+  state.message = `${product.marketName} added.`;
+  notify();
+  return true;
+}
+
+export function removeShoppingItem(productId) {
+  if (!state.shopping.items[productId]) {
+    return false;
+  }
+
+  const nextQuantity = state.shopping.items[productId] - 1;
+  if (nextQuantity > 0) {
+    state.shopping.items[productId] = nextQuantity;
+  } else {
+    delete state.shopping.items[productId];
+  }
+
+  state.message = nextQuantity > 0 ? "Quantity reduced." : "Removed.";
+  notify();
+  return true;
+}
+
+export function purchaseShoppingList() {
+  const entries = Object.entries(state.shopping.items);
+  if (entries.length === 0) {
+    state.message = "List empty.";
+    notify();
+    return false;
+  }
+
+  let total = 0;
+  for (const [productId, quantity] of entries) {
+    const product = getProduct(productId);
+    if (!product) {
+      continue;
+    }
+    total += product.price * quantity;
+  }
+
+  if (state.coins < total) {
+    state.message = `Need ${total} coins.`;
+    notify();
+    return false;
+  }
+
+  state.coins -= total;
+
+  for (const [productId, quantity] of entries) {
+    const product = getProduct(productId);
+    if (!product) {
+      continue;
+    }
+
+    addBarnItem(productId, quantity);
+  }
+
+  state.shopping.items = {};
+  state.message = "Purchased.";
+  notify();
+  return true;
+}
+
+export function buyLandPlot() {
+  const cost = getNextLandPlotCost();
+  if (state.coins < cost) {
+    state.message = `Need ${cost} coins.`;
+    notify();
+    return false;
+  }
+
+  state.coins -= cost;
+  spawnFarmPlot();
+  state.message = `Land plot bought for ${cost} coins.`;
+  notify();
+  return true;
+}
+
+export function getPlotDisplayLabel(plot) {
+  if (!plot || !plot.cropId) {
+    return "";
+  }
+
+  const cropProduct = getProduct(plot.cropId);
+  return cropProduct?.marketName || cropProduct?.inventoryName || "";
+}
+
+export function getPlotStatusLabel(plot) {
+  if (!plot || !plot.cropId) {
+    return "";
+  }
+
+  if (plot.stage === FARM_STAGE_PLANTED) {
+    return "need water";
+  }
+
+  if (plot.stage === FARM_STAGE_GROWING) {
+    return "till growing";
+  }
+
+  if (plot.stage === FARM_STAGE_MATURE) {
+    return "harvest";
+  }
+
+  return "";
 }

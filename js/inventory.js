@@ -1,30 +1,42 @@
-import { onStateChange, selectWheatSeed, state } from "./state.js";
+import { getProduct } from "./catalog.js";
+import {
+  clearInventorySelection,
+  getBarnItemQuantity,
+  isInventoryItemSelected,
+  selectInventoryItem,
+  state,
+} from "./state.js";
 
-export function mountInventory(container) {
-  container.addEventListener("click", (event) => {
-    const item = event.target.closest("[data-seed='wheat']");
-    if (!item) {
-      return;
-    }
+export function getInventoryEntries() {
+  return Object.entries(state.barn.items)
+    .map(([productId, quantity]) => {
+      const product = getProduct(productId);
+      return product ? { product, quantity } : null;
+    })
+    .filter(Boolean);
+}
 
-    selectWheatSeed();
-  });
-
-  function render() {
-    container.innerHTML = `
-      <div class="market-inventory">
-        <div class="market-small">Seed inventory</div>
-        <button class="seed-button seed-card drag-item" data-seed="wheat" type="button" ${state.inventory.wheatSeed <= 0 ? "disabled" : ""}>
-          <div class="item-icon">🌱</div>
-          <div class="item-copy">
-            <strong>Wheat seeds</strong>
-            <span>Owned: ${state.inventory.wheatSeed}</span>
-          </div>
-        </button>
-      </div>
-    `;
+export function handleInventorySelection(productId) {
+  const product = getProduct(productId);
+  if (!product) {
+    return false;
   }
 
-  onStateChange(render);
-  render();
+  if (getBarnItemQuantity(productId) <= 0) {
+    return false;
+  }
+
+  if (product.category !== "seeds") {
+    return false;
+  }
+
+  return selectInventoryItem(productId);
+}
+
+export function clearSelectedInventoryItem() {
+  return clearInventorySelection();
+}
+
+export function isSelectedInventoryItem(productId) {
+  return isInventoryItemSelected(productId);
 }

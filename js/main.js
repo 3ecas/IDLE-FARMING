@@ -1,130 +1,101 @@
-import { mountInventory } from "./inventory.js";
+import { mountBarn } from "./barn.js";
 import { mountMarket } from "./market.js";
+import { mountMoney } from "./money.js";
 import { mountPlot } from "./plot.js";
+import { mountShopping } from "./shopping.js";
 import { mountTools } from "./tools.js";
-import { moveWidget, onStateChange, state } from "./state.js";
+import { getCellSize } from "./layout.js";
+import { clearSelectedInventoryItem } from "./inventory.js";
+import { applyStarterLayout, clearActiveTool, isCellHidden, moveCell, onStateChange, restartFarm, state } from "./state.js";
 
-const farmGrid = document.getElementById("farm-grid");
 const statusRoot = document.getElementById("status");
+const cellMount = document.getElementById("cell-mount");
+const marketMount = document.getElementById("market-mount");
+const moneyMount = document.getElementById("money-mount");
+const shoppingMount = document.getElementById("shopping-mount");
+const barnMount = document.getElementById("barn-mount");
+const toolsMount = document.getElementById("tools-mount");
+const restartButton = document.querySelector("[data-restart-farm]");
 
-function statusMarkup() {
-  statusRoot.innerHTML = `<strong>Status:</strong> ${state.message}`;
+function renderStatus() {
+  statusRoot.textContent = state.message;
 }
 
-function widgetFrame(widgetId, bodyHtml) {
-  return `
-    <article class="widget" data-widget-id="${widgetId}" draggable="true">
-      ${bodyHtml}
-    </article>
-  `;
-}
+mountPlot(cellMount);
+mountMarket(marketMount);
+mountMoney(moneyMount);
+mountShopping(shoppingMount);
+mountBarn(barnMount);
+mountTools(toolsMount);
+onStateChange(renderStatus);
+renderStatus();
+applyStarterLayout();
 
-function renderWidgets() {
-  const widgets = {
-    "land-plots": "",
-    warehouse: `
-      <section class="widget-shell widget-dropzone" data-widget-id="warehouse">
-        <div class="widget-header drag-handle" data-widget-handle="warehouse">
-          <div class="widget-title">
-            <strong>Warehouse</strong>
-            <span>Harvest storage</span>
-          </div>
-          <div class="grab-hint">⋮⋮</div>
-        </div>
-        <div class="widget-body">
-          <div class="warehouse-count">
-            <div class="warehouse-icon">🏚️</div>
-            <div>
-              <strong>${state.warehouse.wheat} wheat</strong>
-              <span>Harvested wheat goes here</span>
-            </div>
-          </div>
-          <div class="row" style="margin-top:12px;">
-            <span class="pill">🌾 Stored wheat: ${state.warehouse.wheat}</span>
-            <span class="pill">🪙 Coins: ${state.coins}</span>
-          </div>
-        </div>
-      </section>
-    `,
-    market: `<div id="market-mount"></div>`,
-    tools: `<div id="tools-mount"></div>`,
-  };
+document.addEventListener("pointerdown", (event) => {
+  const interactiveElement = event.target.closest(
+    "[data-cell-key], [data-delete-zone], [data-restart-farm], button, summary, input, textarea, select, a, label"
+  );
+  if (interactiveElement) {
+    return;
+  }
 
-  farmGrid.innerHTML = state.layoutOrder
-    .map((widgetId) => {
-      if (widgetId === "land-plots") {
-        return `<div id="land-plots-mount"></div>`;
-      }
-      return widgets[widgetId];
-    })
-    .join("");
-}
+  clearActiveTool();
+  clearSelectedInventoryItem();
+});
 
-function installLayoutDragHandlers() {
-  farmGrid.addEventListener("dragstart", (event) => {
-    const widget = event.target.closest("[data-widget-id]");
-    if (!widget) {
-      return;
-    }
-
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData(
-      "text/plain",
-      JSON.stringify({ kind: "widget", widgetId: widget.dataset.widgetId })
-    );
-  });
-
-  farmGrid.addEventListener("dragover", (event) => {
-    const target = event.target.closest("[data-widget-id]");
-    if (!target) {
-      event.preventDefault();
-      return;
-    }
-
-    event.preventDefault();
-    target.classList.add("drag-over");
-  });
-
-  farmGrid.addEventListener("dragleave", (event) => {
-    const target = event.target.closest("[data-widget-id]");
-    if (target) {
-      target.classList.remove("drag-over");
-    }
-  });
-
-  farmGrid.addEventListener("drop", (event) => {
-    event.preventDefault();
-    const target = event.target.closest("[data-widget-id]");
-    const payload = safeParseDrag(event.dataTransfer.getData("text/plain"));
-    if (!payload || payload.kind !== "widget" || !target) {
-      return;
-    }
-
-    moveWidget(payload.widgetId, target.dataset.widgetId);
+if (restartButton) {
+  restartButton.addEventListener("click", () => {
+    restartFarm();
+    refreshLayout();
   });
 }
 
-function mountSections() {
-  mountPlot(document.getElementById("land-plots-mount"));
-  mountMarket(document.getElementById("market-mount"));
-  mountTools(document.getElementById("tools-mount"));
-  mountInventory(document.getElementById("market-mount"));
-}
+function refreshLayout() {
+  const workspace = document.getElementById("workspace");
+  if (!workspace) {
+    return;
+  }
 
-function safeParseDrag(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
+  if (workspace.clientWidth < 720) {
+    const left = 16;
+    const gap = 12;
+    if (!isCellHidden("barn")) {
+      moveCell("barn", left, 16);
+    }
+
+    const barnElement = isCellHidden("barn") ? null : document.querySelector("[data-barn-cell]");
+    const marketElement = isCellHidden("market") ? null : document.querySelector("[data-market-cell]");
+    const shoppingElement = isCellHidden("shopping") ? null : document.querySelector("[data-shopping-cell]");
+    const barnBottom = barnElement ? barnElement.offsetTop + barnElement.offsetHeight : 16;
+    const marketBottom = marketElement ? marketElement.offsetTop + marketElement.offsetHeight : barnBottom;
+    const shoppingBottom = shoppingElement ? shoppingElement.offsetTop + shoppingElement.offsetHeight : marketBottom;
+    let top = Math.max(barnBottom, marketBottom, shoppingBottom) + gap;
+
+    if (!isCellHidden("market")) {
+      moveCell("market", left, top);
+      top += getCellSize("market").height + gap;
+    }
+
+    if (!isCellHidden("money")) {
+      moveCell("money", left, top);
+      top += getCellSize("money").height + gap;
+    }
+
+    if (!isCellHidden("tools")) {
+      moveCell("tools", left, top);
+    }
+    return;
+  }
+
+  for (const key of ["market", "money", "barn", "tools"]) {
+    if (isCellHidden(key)) {
+      continue;
+    }
+
+    const position = state.cells[key];
+    moveCell(key, position.left, position.top);
   }
 }
 
-function render() {
-  renderWidgets();
-  installLayoutDragHandlers();
-  mountSections();
-  statusMarkup();
-}
-
-onStateChange(render);
-render();
+window.addEventListener("resize", refreshLayout);
+refreshLayout();
