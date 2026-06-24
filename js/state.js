@@ -850,6 +850,26 @@ function grantBarnItemSilently(productId, quantity = 1) {
   return true;
 }
 
+function consumeBarnItemSilently(productId, quantity = 1) {
+  const currentQuantity = getBarnItemQuantity(productId);
+  if (currentQuantity < quantity) {
+    return false;
+  }
+
+  const nextQuantity = currentQuantity - quantity;
+  if (nextQuantity > 0) {
+    state.barn.items[productId] = nextQuantity;
+  } else {
+    delete state.barn.items[productId];
+  }
+
+  if (state.inventory.selectedItemId === productId && nextQuantity === 0) {
+    state.inventory.selectedItemId = null;
+  }
+
+  return true;
+}
+
 function getAnimalPenFoodQuantity(productId) {
   return state.animalPen.food[productId] || 0;
 }
@@ -905,7 +925,7 @@ function ensureAnimalPenTicker() {
   }, 250);
 }
 
-function advanceAnimalPenProduction() {
+function advanceAnimalPenProduction({ shouldNotify = true } = {}) {
   if (!state.buildings.animalPen) {
     clearAnimalPenTicker();
     return false;
@@ -945,7 +965,9 @@ function advanceAnimalPenProduction() {
     if (producedMilk) {
       state.message = "Milk produced.";
     }
-    notify();
+    if (shouldNotify) {
+      notify();
+    }
     return true;
   }
 
@@ -966,7 +988,7 @@ function hydrateAnimalPenState() {
     ? state.animalPen.animals.filter((animal) => animal && typeof animal === "object")
     : [];
 
-  advanceAnimalPenProduction();
+  advanceAnimalPenProduction({ shouldNotify: false });
 }
 
 export function setActiveTool(toolId) {
@@ -1048,12 +1070,12 @@ export function buildAnimalPen() {
     return false;
   }
 
-  consumeBarnItem("wood", ANIMAL_PEN_WOOD_COST);
-  consumeBarnItem("nails", ANIMAL_PEN_NAIL_COST);
+  consumeBarnItemSilently("wood", ANIMAL_PEN_WOOD_COST);
+  consumeBarnItemSilently("nails", ANIMAL_PEN_NAIL_COST);
   state.buildings.animalPen = true;
   saveFlag("animalPenBuilt", true);
   state.message = "Animal pen built.";
-  advanceAnimalPenProduction();
+  advanceAnimalPenProduction({ shouldNotify: false });
   notify();
   return true;
 }
@@ -1072,7 +1094,7 @@ export function addAnimalToPen(productId) {
     return false;
   }
 
-  if (!consumeBarnItem(productId, 1)) {
+  if (!consumeBarnItemSilently(productId, 1)) {
     state.message = `No ${product.inventoryName} left.`;
     notify();
     return false;
@@ -1084,7 +1106,7 @@ export function addAnimalToPen(productId) {
     readyAt: null,
   });
   saveAnimalPenState(state.animalPen);
-  advanceAnimalPenProduction();
+  advanceAnimalPenProduction({ shouldNotify: false });
   state.message = `${product.inventoryName} moved to the pen.`;
   notify();
   return true;
@@ -1104,7 +1126,7 @@ export function addAnimalFoodToPen(productId, quantity = 1) {
     return false;
   }
 
-  if (!consumeBarnItem(productId, quantity)) {
+  if (!consumeBarnItemSilently(productId, quantity)) {
     state.message = `No ${product.inventoryName} left.`;
     notify();
     return false;
@@ -1112,7 +1134,7 @@ export function addAnimalFoodToPen(productId, quantity = 1) {
 
   state.animalPen.food[productId] = (state.animalPen.food[productId] || 0) + quantity;
   saveAnimalPenState(state.animalPen);
-  advanceAnimalPenProduction();
+  advanceAnimalPenProduction({ shouldNotify: false });
   state.message = "Food added.";
   notify();
   return true;
@@ -1129,20 +1151,8 @@ export function addBarnItem(productId, quantity = 1) {
 }
 
 export function consumeBarnItem(productId, quantity = 1) {
-  const currentQuantity = getBarnItemQuantity(productId);
-  if (currentQuantity < quantity) {
+  if (!consumeBarnItemSilently(productId, quantity)) {
     return false;
-  }
-
-  const nextQuantity = currentQuantity - quantity;
-  if (nextQuantity > 0) {
-    state.barn.items[productId] = nextQuantity;
-  } else {
-    delete state.barn.items[productId];
-  }
-
-  if (state.inventory.selectedItemId === productId && nextQuantity === 0) {
-    state.inventory.selectedItemId = null;
   }
 
   notify();
@@ -1239,7 +1249,7 @@ export function sellQueuedItems() {
       continue;
     }
 
-    consumeBarnItem(product.id, sellQuantity);
+    consumeBarnItemSilently(product.id, sellQuantity);
     total += getProductSellPrice(product.id) * sellQuantity;
   }
 
@@ -1267,8 +1277,8 @@ export function buildMill() {
     return false;
   }
 
-  consumeBarnItem("wood", MILL_WOOD_COST);
-  consumeBarnItem("nails", MILL_NAIL_COST);
+  consumeBarnItemSilently("wood", MILL_WOOD_COST);
+  consumeBarnItemSilently("nails", MILL_NAIL_COST);
   state.buildings.mill = true;
   saveFlag("millBuilt", true);
   state.message = "Mill built.";
@@ -1289,8 +1299,8 @@ export function millWheatToFlour() {
     return false;
   }
 
-  consumeBarnItem("wheatCrop", 2);
-  addBarnItem("flour", 1);
+  consumeBarnItemSilently("wheatCrop", 2);
+  grantBarnItemSilently("flour", 1);
   state.message = "Flour made.";
   notify();
   return true;
@@ -1319,7 +1329,7 @@ function plantSeedOnPlot(plotId, seedId) {
     return false;
   }
 
-  if (!consumeBarnItem(seedId, 1)) {
+  if (!consumeBarnItemSilently(seedId, 1)) {
     state.message = `No ${selectedProduct.inventoryName} left.`;
     notify();
     return false;
@@ -1361,7 +1371,7 @@ export function harvestPlot(plotId) {
   }
 
   if (plot.stage === FARM_STAGE_PLANTED || plot.stage === FARM_STAGE_GROWING) {
-    addBarnItem(plot.cropId, 1);
+    grantBarnItemSilently(plot.cropId, 1);
     plot.cropId = null;
     plot.stage = FARM_STAGE_EMPTY;
     plot.growCompleteAt = null;
@@ -1381,7 +1391,7 @@ export function harvestPlot(plotId) {
   const cropProduct = getProduct(plot.cropId);
   const harvestProductId = cropProduct?.cropProductId || plot.cropId;
   const harvestQuantity = Number.isFinite(cropProduct?.harvestYield) ? cropProduct.harvestYield : 1;
-  addBarnItem(harvestProductId, harvestQuantity);
+  grantBarnItemSilently(harvestProductId, harvestQuantity);
   plot.cropId = null;
   plot.stage = FARM_STAGE_EMPTY;
   plot.growCompleteAt = null;
@@ -1626,7 +1636,7 @@ export function purchaseShoppingList() {
       continue;
     }
 
-    addBarnItem(productId, quantity);
+    grantBarnItemSilently(productId, quantity);
   }
 
   state.shopping.items = {};

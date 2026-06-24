@@ -132,8 +132,10 @@ export function mountMarket(container) {
     );
 
     const selectedSection = SHOP_SECTIONS.find((section) => section.key === activeShopTab) || SHOP_SECTIONS[0];
-    const selectedProductIds = selectedSection?.productIds || [];
-    let selectedContent = selectedProductIds.map((productId) => renderProductButton(getProduct(productId))).join("");
+    const selectedProducts = (selectedSection?.productIds || [])
+      .map((productId) => getProduct(productId))
+      .filter(Boolean);
+    let selectedContent = selectedProducts.map((product) => renderProductButton(product)).join("");
     if (selectedSection.key === "farmUpgrades") {
       selectedContent = `${renderLandPlotButton()}${selectedContent}`;
     }

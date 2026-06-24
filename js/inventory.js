@@ -11,7 +11,7 @@ export function getInventoryEntries() {
   return Object.entries(state.barn.items)
     .map(([productId, quantity]) => {
       const product = getProduct(productId);
-      return product ? { product, quantity } : null;
+      return product && quantity > 0 ? { product, quantity } : null;
     })
     .filter(Boolean);
 }

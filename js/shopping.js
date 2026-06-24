@@ -4,6 +4,7 @@ import { isCellHidden, onStateChange, purchaseShoppingList, removeShoppingItem, 
 const SHOPPING_WIDTH = 176;
 const SHOPPING_HEIGHT = 144;
 const SHOPPING_GAP = 12;
+let pendingDockRender = false;
 
 function overlaps(left, top, width, height, rect) {
   return left < rect.right && left + width > rect.left && top < rect.bottom && top + height > rect.top;
@@ -55,16 +56,14 @@ function getShoppingEntries() {
   return Object.entries(state.shopping.items)
     .map(([productId, quantity]) => {
       const product = getProduct(productId);
-      return product ? { product, quantity } : null;
+      return product && quantity > 0 ? { product, quantity } : null;
     })
     .filter(Boolean);
 }
 
 export function mountShopping(container) {
   window.addEventListener("idle-farm-market-moved", () => {
-    if (container.firstElementChild) {
-      render();
-    }
+    scheduleDockRender();
   });
 
   container.addEventListener("click", (event) => {
@@ -81,6 +80,8 @@ export function mountShopping(container) {
   });
 
   function render() {
+    pendingDockRender = false;
+
     if (isCellHidden("shopping") || isCellHidden("market")) {
       container.innerHTML = "";
       return;
@@ -127,4 +128,13 @@ export function mountShopping(container) {
 
   onStateChange(render);
   render();
+
+  function scheduleDockRender() {
+    if (!container.firstElementChild || pendingDockRender) {
+      return;
+    }
+
+    pendingDockRender = true;
+    window.requestAnimationFrame(render);
+  }
 }
