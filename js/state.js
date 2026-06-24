@@ -2,6 +2,7 @@ import { getProduct, getProductSellPrice } from "./catalog.js";
 import { getCellSize } from "./layout.js";
 
 const listeners = new Set();
+const progressListeners = new Set();
 const growthTimers = new Map();
 let growthTicker = null;
 let animalPenTicker = null;
@@ -541,9 +542,20 @@ function notify() {
   }
 }
 
+function notifyProgress() {
+  for (const listener of progressListeners) {
+    listener();
+  }
+}
+
 export function onStateChange(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+export function onProgressChange(listener) {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
 }
 
 export function setMessage(message) {
@@ -771,7 +783,7 @@ function ensureGrowthTicker() {
       return;
     }
 
-    notify();
+    notifyProgress();
   }, 250);
 }
 
@@ -888,7 +900,7 @@ function ensureAnimalPenTicker() {
 
     const changed = advanceAnimalPenProduction();
     if (!changed && hasActiveAnimalPenCycles()) {
-      notify();
+      notifyProgress();
     }
   }, 250);
 }

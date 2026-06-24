@@ -71,6 +71,9 @@ function clearSeedDrag() {
     return;
   }
 
+  window.removeEventListener("pointermove", handleSeedDragPointerMove);
+  window.removeEventListener("pointerup", handleSeedDragPointerUp);
+  window.removeEventListener("pointercancel", handleSeedDragPointerCancel);
   activeSeedDrag.button.classList.remove("is-dragging");
   document.body.classList.remove("is-dragging-cell");
 
@@ -109,6 +112,84 @@ function createSeedDragGhost(button, left, top) {
 function getFarmCellFromPoint(x, y) {
   const element = document.elementFromPoint(x, y);
   return element?.closest?.("[data-farm-cell]") || null;
+}
+
+function handleSeedDragPointerMove(event) {
+  if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
+    return;
+  }
+
+  const deltaX = event.clientX - activeSeedDrag.startX;
+  const deltaY = event.clientY - activeSeedDrag.startY;
+
+  if (!activeSeedDrag.dragged && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) {
+    return;
+  }
+
+  if (!activeSeedDrag.dragged) {
+    activeSeedDrag.dragged = true;
+    if (activeSeedDrag.ghost) {
+      activeSeedDrag.ghost.remove();
+    }
+    activeSeedDrag.ghost = createSeedDragGhost(
+      activeSeedDrag.button,
+      activeSeedDrag.startLeft,
+      activeSeedDrag.startTop
+    );
+    activeSeedDrag.button.classList.add("is-dragging");
+    document.body.classList.add("is-dragging-cell");
+  }
+
+  if (activeSeedDrag.ghost) {
+    activeSeedDrag.ghost.style.left = `${activeSeedDrag.startLeft + deltaX}px`;
+    activeSeedDrag.ghost.style.top = `${activeSeedDrag.startTop + deltaY}px`;
+  }
+
+  event.preventDefault();
+}
+
+function handleSeedDragPointerUp(event) {
+  if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
+    return;
+  }
+
+  const snapshot = activeSeedDrag;
+  const wasDragged = snapshot.dragged;
+  clearSeedDrag();
+
+  if (!wasDragged) {
+    return;
+  }
+
+  markRecentlyDraggedSeed(snapshot.productId);
+
+  if (snapshot.target === "farm") {
+    const farmCell = getFarmCellFromPoint(event.clientX, event.clientY);
+    if (farmCell) {
+      plantSeedFromInventoryOnPlot(farmCell.dataset.cellKey, snapshot.productId);
+    }
+  } else if (snapshot.target === "animalPen") {
+    const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
+    if (penTarget === "animals") {
+      addAnimalToPen(snapshot.productId);
+    }
+  } else if (snapshot.target === "animalFood") {
+    const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
+    if (penTarget === "food") {
+      addAnimalFoodToPen(snapshot.productId);
+    }
+  } else {
+    const sellCell = getSellCellFromPoint(event.clientX, event.clientY);
+    if (sellCell) {
+      addProductToSellStand(snapshot.productId);
+    }
+  }
+
+  event.preventDefault();
+}
+
+function handleSeedDragPointerCancel() {
+  clearSeedDrag();
 }
 
 function isSellableProduct(product) {
@@ -254,87 +335,17 @@ export function mountBarn(container) {
     } catch {
       // Best effort.
     }
-  });
 
-  container.addEventListener("pointermove", (event) => {
-    if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
-      return;
-    }
-
-    const deltaX = event.clientX - activeSeedDrag.startX;
-    const deltaY = event.clientY - activeSeedDrag.startY;
-
-    if (!activeSeedDrag.dragged && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) {
-      return;
-    }
-
-    if (!activeSeedDrag.dragged) {
-      activeSeedDrag.dragged = true;
-      if (activeSeedDrag.ghost) {
-        activeSeedDrag.ghost.remove();
-      }
-      activeSeedDrag.ghost = createSeedDragGhost(
-        activeSeedDrag.button,
-        activeSeedDrag.startLeft,
-        activeSeedDrag.startTop
-      );
-      activeSeedDrag.button.classList.add("is-dragging");
-      document.body.classList.add("is-dragging-cell");
-    }
-
-    if (activeSeedDrag.ghost) {
-      activeSeedDrag.ghost.style.left = `${activeSeedDrag.startLeft + deltaX}px`;
-      activeSeedDrag.ghost.style.top = `${activeSeedDrag.startTop + deltaY}px`;
-    }
-
-    event.preventDefault();
-  });
-
-  container.addEventListener("pointerup", (event) => {
-    if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
-      return;
-    }
-
-    const snapshot = activeSeedDrag;
-    const wasDragged = snapshot.dragged;
-    clearSeedDrag();
-
-    if (!wasDragged) {
-      return;
-    }
-
-    markRecentlyDraggedSeed(snapshot.productId);
-
-    if (snapshot.target === "farm") {
-      const farmCell = getFarmCellFromPoint(event.clientX, event.clientY);
-      if (farmCell) {
-        plantSeedFromInventoryOnPlot(farmCell.dataset.cellKey, snapshot.productId);
-      }
-    } else if (snapshot.target === "animalPen") {
-      const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
-      if (penTarget === "animals") {
-        addAnimalToPen(snapshot.productId);
-      }
-    } else if (snapshot.target === "animalFood") {
-      const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
-      if (penTarget === "food") {
-        addAnimalFoodToPen(snapshot.productId);
-      }
-    } else {
-      const sellCell = getSellCellFromPoint(event.clientX, event.clientY);
-      if (sellCell) {
-        addProductToSellStand(snapshot.productId);
-      }
-    }
-
-    event.preventDefault();
-  });
-
-  container.addEventListener("pointercancel", () => {
-    clearSeedDrag();
+    window.addEventListener("pointermove", handleSeedDragPointerMove, { passive: false });
+    window.addEventListener("pointerup", handleSeedDragPointerUp);
+    window.addEventListener("pointercancel", handleSeedDragPointerCancel);
   });
 
   function render() {
+    if (activeSeedDrag) {
+      return;
+    }
+
     if (isCellHidden("barn")) {
       barnWasHidden = true;
       container.innerHTML = "";

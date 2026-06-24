@@ -5,6 +5,7 @@ import {
   getPlotStatusLabel,
   harvestPlot,
   moveFarmPlot,
+  onProgressChange,
   onStateChange,
   plantSelectedSeedOnPlot,
   state,
@@ -120,6 +121,30 @@ export function mountPlot(container) {
   }
 
   onStateChange(render);
+  onProgressChange(updateProgress);
   render();
   window.addEventListener("resize", render);
+
+  function updateProgress() {
+    for (const plot of state.farm.plots) {
+      if (plot.stage !== "growing") {
+        continue;
+      }
+
+      const cell = container.querySelector(`[data-cell-key="${plot.id}"]`);
+      if (!cell) {
+        continue;
+      }
+
+      const growthProgress = getPlotGrowthProgress(plot);
+      const status = cell.querySelector(".farm-cell__status");
+      const progressFill = cell.querySelector(".farm-cell__progress-fill");
+      if (status) {
+        status.textContent = `${getPlotStatusLabel(plot)} ${growthProgress}%`;
+      }
+      if (progressFill) {
+        progressFill.style.width = `${growthProgress}%`;
+      }
+    }
+  }
 }

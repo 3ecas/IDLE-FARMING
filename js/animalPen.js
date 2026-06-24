@@ -1,5 +1,5 @@
 import { getProduct } from "./catalog.js";
-import { getCellDragBounds, isBuildingBuilt, moveCell, onStateChange, state } from "./state.js";
+import { getCellDragBounds, isBuildingBuilt, moveCell, onProgressChange, onStateChange, state } from "./state.js";
 import { mountMovableCell } from "./drag.js";
 
 function clampToWorkspace(workspace, left, top) {
@@ -35,7 +35,7 @@ function renderAnimalCard(animal) {
   const status = animal.readyAt ? `Milk ${progress}%` : "Needs straw 0%";
 
   return `
-    <div class="animal-item">
+    <div class="animal-item" data-animal-id="${animal.id}">
       <div class="animal-item__icon" aria-hidden="true">🐄</div>
       <div class="animal-item__name">${label}</div>
       <div class="animal-item__status">${status}</div>
@@ -125,6 +125,30 @@ export function mountAnimalPen(container) {
   }
 
   onStateChange(render);
+  onProgressChange(updateProgress);
   render();
   window.addEventListener("resize", render);
+
+  function updateProgress() {
+    if (!isBuildingBuilt("animalPen")) {
+      return;
+    }
+
+    for (const animal of state.animalPen.animals) {
+      const item = container.querySelector(`[data-animal-id="${animal.id}"]`);
+      if (!item) {
+        continue;
+      }
+
+      const progress = getAnimalProductionProgress(animal);
+      const status = item.querySelector(".animal-item__status");
+      const progressFill = item.querySelector(".animal-item__progress-fill");
+      if (status) {
+        status.textContent = animal.readyAt ? `Milk ${progress}%` : "Needs straw 0%";
+      }
+      if (progressFill) {
+        progressFill.style.width = `${progress}%`;
+      }
+    }
+  }
 }
