@@ -1,5 +1,15 @@
 import { getProduct } from "./catalog.js";
-import { getCellDragBounds, isBuildingBuilt, moveCell, onProgressChange, onStateChange, state } from "./state.js";
+import {
+  addChickenFoodToCoop,
+  getBarnItemQuantity,
+  getCellDragBounds,
+  isBuildingBuilt,
+  moveCell,
+  onProgressChange,
+  onStateChange,
+  removeChickenFoodFromCoop,
+  state,
+} from "./state.js";
 import { mountMovableCell } from "./drag.js";
 
 function clampToWorkspace(workspace, left, top) {
@@ -49,16 +59,77 @@ function renderAnimalCard(animal) {
   `;
 }
 
+function formatFoodQuantity(quantity) {
+  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(1);
+}
+
+function renderFoodSlot() {
+  const cornCount = state.chickenCoop.food.cornCrop || 0;
+  const canAddFood = getBarnItemQuantity("cornCrop") > 0;
+  const canRemoveFood = cornCount > 0;
+  return `
+    <div class="animal-pen-food chicken-coop-food" data-chicken-coop-food-drop>
+      <div class="animal-pen-food__label">Food</div>
+      <div class="chicken-coop-food__controls">
+        <button
+          type="button"
+          class="chicken-coop-food__control"
+          data-chicken-coop-food-action="remove"
+          aria-label="Remove corn from chicken coop"
+          ${canRemoveFood ? "" : "disabled"}
+        >
+          -
+        </button>
+        <div class="animal-pen-food__value">Corn x${formatFoodQuantity(cornCount)}</div>
+        <button
+          type="button"
+          class="chicken-coop-food__control"
+          data-chicken-coop-food-action="add"
+          aria-label="Add corn to chicken coop"
+          ${canAddFood ? "" : "disabled"}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 export function getChickenCoopDropTargetFromPoint(x, y) {
   if (!isBuildingBuilt("chickenCoop")) {
     return null;
   }
 
   const element = document.elementFromPoint(x, y);
-  return element?.closest?.("[data-chicken-coop-cell]") ? "animals" : null;
+  if (!element) {
+    return null;
+  }
+
+  if (element.closest?.("[data-chicken-coop-food-drop]")) {
+    return "food";
+  }
+
+  return element.closest?.("[data-chicken-coop-cell]") ? "animals" : null;
 }
 
 export function mountChickenCoop(container) {
+  function handleFoodControlClick(event) {
+    const button = event.target.closest?.("[data-chicken-coop-food-action]");
+    if (!button || !container.contains(button)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const action = button.dataset.chickenCoopFoodAction;
+    if (action === "add") {
+      addChickenFoodToCoop("cornCrop", 1);
+    } else if (action === "remove") {
+      removeChickenFoodFromCoop("cornCrop", 1);
+    }
+  }
+
   mountMovableCell(container, {
     key: "chickenCoop",
     selector: "[data-chicken-coop-cell]",
@@ -68,6 +139,7 @@ export function mountChickenCoop(container) {
       return true;
     },
   });
+  container.addEventListener("click", handleFoodControlClick);
 
   function render() {
     if (!isBuildingBuilt("chickenCoop")) {
@@ -92,6 +164,7 @@ export function mountChickenCoop(container) {
           </span>
         </div>
         <div class="animal-pen-body">
+          ${renderFoodSlot()}
           <div class="animal-pen-list">
             ${
               animals.length > 0

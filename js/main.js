@@ -14,9 +14,8 @@ import { mountSellMarket } from "./sellMarket.js";
 import { mountShopping } from "./shopping.js";
 import { mountFarmCursors } from "./cursor.js";
 import { bootstrapGamePersistence } from "./persistence.js";
-import { getCellSize } from "./layout.js";
 import { clearSelectedInventoryItem } from "./inventory.js";
-import { getPinnedMoneyPosition, getStarterLayoutPositions, isCellHidden, moveCell, onStateChange, restartFarm, showCell, state } from "./state.js";
+import { isCellHidden, onStateChange, restartFarm, showCell, stabilizeLayoutPositions, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
 const cellMount = document.getElementById("cell-mount");
@@ -88,124 +87,13 @@ if (restartButton) {
 }
 
 function refreshLayout() {
-  const workspace = document.getElementById("workspace");
-  if (!workspace) {
-    return;
-  }
-
-  const moneyPosition = getPinnedMoneyPosition();
   if (isCellHidden("money")) {
     showCell("money");
   }
-  moveCell("money", moneyPosition.left, moneyPosition.top);
-
-  if (workspace.clientWidth < 720) {
-    const left = 16;
-    const gap = 12;
-    let top = 16 + getCellSize("money").height + gap;
-
-    if (!isCellHidden("menu")) {
-      moveCell("menu", left, top);
-      top += getCellSize("menu").height + gap;
-    }
-
-    if (!isCellHidden("market")) {
-      moveCell("market", left, top);
-      top += getCellSize("market").height + gap;
-    }
-
-    if (!isCellHidden("sellMarket")) {
-      moveCell("sellMarket", left, top);
-      top += getCellSize("sellMarket").height + gap;
-    }
-
-    if (!isCellHidden("fastItems")) {
-      moveCell("fastItems", left, top);
-      top += getCellSize("fastItems").height + gap;
-    }
-
-    if (!isCellHidden("build")) {
-      moveCell("build", left, top);
-      top += getCellSize("build").height + gap;
-    }
-
-    if (state.buildings.animalPen) {
-      moveCell("animalPen", left, top);
-      top += getCellSize("animalPen").height + gap;
-    }
-
-    if (state.buildings.chickenCoop) {
-      moveCell("chickenCoop", left, top);
-      top += getCellSize("chickenCoop").height + gap;
-    }
-
-    if (state.buildings.bakery) {
-      moveCell("bakery", left, top);
-      top += getCellSize("bakery").height + gap;
-    }
-
-    if (state.buildings.animalFeeder) {
-      moveCell("animalFeeder", left, top);
-      top += getCellSize("animalFeeder").height + gap;
-    }
-
-    if (!isCellHidden("barn")) {
-      moveCell("barn", left, top);
-      top += getCellSize("barn").height + gap;
-    }
-
-    if (state.buildings.mill) {
-      moveCell("mill", left, top);
-    }
-    return;
-  }
-
-  for (const key of ["market", "sellMarket", "money", "barn", "fastItems", "build"]) {
-    if (isCellHidden(key)) {
-      continue;
-    }
-
-    const position = state.cells[key];
-    moveCell(key, position.left, position.top);
-  }
-
-  for (const key of ["menu"]) {
-    if (isCellHidden(key)) {
-      continue;
-    }
-    const position = getStarterLayoutPositions()[key];
-    moveCell(key, position.left, position.top);
-  }
-
-  if (state.buildings.mill) {
-    const position = state.cells.mill;
-    moveCell("mill", position.left, position.top);
-  }
-
-  if (state.buildings.bakery) {
-    const position = state.cells.bakery;
-    moveCell("bakery", position.left, position.top);
-  }
-
-  if (state.buildings.animalFeeder) {
-    const position = state.cells.animalFeeder;
-    moveCell("animalFeeder", position.left, position.top);
-  }
-
-  if (state.buildings.animalPen) {
-    const position = state.cells.animalPen;
-    moveCell("animalPen", position.left, position.top);
-  }
-
-  if (state.buildings.chickenCoop) {
-    const position = state.cells.chickenCoop;
-    moveCell("chickenCoop", position.left, position.top);
-  }
+  stabilizeLayoutPositions();
 }
 
 function ensureCorePanelsVisible() {
-  const starterLayout = getStarterLayoutPositions();
-
   if (isCellHidden("menu")) {
     showCell("menu");
   }
@@ -213,9 +101,6 @@ function ensureCorePanelsVisible() {
   if (isCellHidden("money")) {
     showCell("money");
   }
-
-  moveCell("menu", starterLayout.menu.left, starterLayout.menu.top);
-  moveCell("money", starterLayout.money.left, starterLayout.money.top);
 }
 
 window.addEventListener("resize", refreshLayout);

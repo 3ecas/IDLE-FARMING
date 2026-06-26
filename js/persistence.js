@@ -1,7 +1,7 @@
-import { applyStarterLayout, LAYOUT_SAVE_VERSION, onStateChange, state } from "./state.js";
+import { applyStarterLayout, LAYOUT_SAVE_VERSION, onStateChange, stabilizeLayoutPositions, state } from "./state.js";
 
 const GAME_STATE_STORAGE_KEY = "idle-farm-game-state-v1";
-const CELL_POSITION_KEYS = ["farm", "market", "sellMarket", "money", "barn", "fastItems", "menu", "build", "mill", "bakery", "animalFeeder", "animalPen", "chickenCoop", "tools"];
+const CELL_POSITION_KEYS = ["farm", "market", "sellMarket", "shopping", "money", "barn", "fastItems", "menu", "build", "mill", "bakery", "animalFeeder", "animalPen", "chickenCoop", "tools"];
 const SAVE_DEBOUNCE_MS = 120;
 
 let saveTimer = null;
@@ -112,6 +112,7 @@ export function bootstrapGamePersistence() {
   if (!hasStoredCellLayout()) {
     applyStarterLayout(true);
   }
+  stabilizeLayoutPositions({ shouldNotify: false });
 
   onStateChange(scheduleSave);
   saveGameState();

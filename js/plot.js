@@ -20,8 +20,99 @@ import { mountMovableCell, wasRecentlyDragged } from "./drag.js";
 const SEED_PICKER_GAP = 8;
 const SEED_PICKER_WIDTH = 172;
 const SEED_PICKER_MAX_HEIGHT = 220;
+const PLOT_TOOLTIP_DELAY_MS = 1500;
+const PLOT_TOOLTIP_OFFSET = 14;
+const PLOT_TOOLTIP_WIDTH = 178;
+const PLOT_TOOLTIP_HEIGHT = 132;
 
 let activeSeedPickerPlotId = null;
+
+function formatRemainingTime(ms) {
+  const seconds = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+}
+
+function formatProductName(productId) {
+  const product = getProduct(productId);
+  return product?.marketName || product?.inventoryName || "Item";
+}
+
+function getHarvestDropText(plot) {
+  const plantedProduct = getProduct(plot?.cropId);
+  const harvestProductId = plantedProduct?.cropProductId || plot?.cropId;
+  const cropProduct = getProduct(harvestProductId);
+  if (!cropProduct) {
+    return "-";
+  }
+
+  const drops = [];
+  const harvestQuantity = Number.isFinite(cropProduct.harvestYield) ? cropProduct.harvestYield : 1;
+  drops.push(`${harvestQuantity} ${cropProduct.marketName || cropProduct.inventoryName || "Crop"}`);
+
+  if (cropProduct.harvestDrops && typeof cropProduct.harvestDrops === "object") {
+    for (const [productId, quantity] of Object.entries(cropProduct.harvestDrops)) {
+      drops.push(`${quantity} ${formatProductName(productId)}`);
+    }
+  }
+
+  return drops.join(", ");
+}
+
+function getPlotTooltipRows(plot) {
+  if (!plot?.cropId) {
+    return [{ label: "State", value: "Plant seed" }];
+  }
+
+  if (plot.stage === "planted") {
+    return [{ label: "State", value: "Needs water" }];
+  }
+
+  if (plot.stage === "growing") {
+    return [
+      { label: "State", value: "Growing" },
+      { label: "Harvest in", value: formatRemainingTime((plot.growCompleteAt || Date.now()) - Date.now()) },
+    ];
+  }
+
+  if (plot.stage === "mature") {
+    return [
+      { label: "State", value: "Ready to harvest" },
+      { label: "Drop", value: getHarvestDropText(plot) },
+    ];
+  }
+
+  return [{ label: "State", value: "Plant seed" }];
+}
+
+function getPlotTooltipContent(plot) {
+  const title = getPlotDisplayLabel(plot) || "Farm Plot";
+  const rows = getPlotTooltipRows(plot)
+    .map((row) => `
+      <div class="seed-info-tooltip__row plot-info-tooltip__row">
+        <span>${row.label}</span>
+        <strong>${row.value}</strong>
+      </div>
+    `)
+    .join("");
+
+  return `
+    <div class="seed-info-tooltip__title">${title}</div>
+    ${rows}
+  `;
+}
+
+function getPlotTooltipPosition(event) {
+  return {
+    left: Math.min(window.innerWidth - PLOT_TOOLTIP_WIDTH - 8, Math.max(8, event.clientX + PLOT_TOOLTIP_OFFSET)),
+    top: Math.min(window.innerHeight - PLOT_TOOLTIP_HEIGHT - 8, Math.max(8, event.clientY + PLOT_TOOLTIP_OFFSET)),
+  };
+}
 
 function clampToWorkspace(workspace, left, top) {
   const bounds = getCellDragBounds("farm");
@@ -78,6 +169,88 @@ function closeSeedPicker() {
 }
 
 export function mountPlot(container) {
+  let hoveredPlotId = null;
+  let latestTooltipEvent = null;
+  let plotTooltipElement = null;
+  let plotTooltipTimer = null;
+  let isPlotTooltipReady = false;
+
+  function hidePlotTooltip() {
+    hoveredPlotId = null;
+    latestTooltipEvent = null;
+    isPlotTooltipReady = false;
+    if (plotTooltipTimer) {
+      window.clearTimeout(plotTooltipTimer);
+      plotTooltipTimer = null;
+    }
+    if (plotTooltipElement) {
+      plotTooltipElement.remove();
+      plotTooltipElement = null;
+    }
+  }
+
+  function updatePlotTooltip(event = latestTooltipEvent) {
+    if (!hoveredPlotId || !event || !isPlotTooltipReady) {
+      return;
+    }
+
+    const plot = state.farm.plots.find((entry) => entry.id === hoveredPlotId);
+    if (!plot) {
+      hidePlotTooltip();
+      return;
+    }
+
+    latestTooltipEvent = event;
+    if (!plotTooltipElement) {
+      plotTooltipElement = document.createElement("div");
+      plotTooltipElement.className = "seed-info-tooltip plot-info-tooltip";
+      plotTooltipElement.setAttribute("role", "tooltip");
+      document.body.appendChild(plotTooltipElement);
+    }
+
+    const position = getPlotTooltipPosition(event);
+    plotTooltipElement.innerHTML = getPlotTooltipContent(plot);
+    plotTooltipElement.style.left = `${position.left}px`;
+    plotTooltipElement.style.top = `${position.top}px`;
+  }
+
+  function showPlotTooltip(event) {
+    const cell = event.target.closest("[data-farm-cell]");
+    if (!cell) {
+      return;
+    }
+
+    hoveredPlotId = cell.dataset.cellKey;
+    latestTooltipEvent = event;
+    isPlotTooltipReady = false;
+    if (plotTooltipTimer) {
+      window.clearTimeout(plotTooltipTimer);
+    }
+    plotTooltipTimer = window.setTimeout(() => {
+      plotTooltipTimer = null;
+      isPlotTooltipReady = true;
+      updatePlotTooltip();
+    }, PLOT_TOOLTIP_DELAY_MS);
+  }
+
+  function movePlotTooltip(event) {
+    if (!hoveredPlotId) {
+      return;
+    }
+
+    latestTooltipEvent = event;
+    updatePlotTooltip(event);
+  }
+
+  function leavePlotTooltip(event) {
+    const cell = event.target.closest("[data-farm-cell]");
+    if (!cell || cell.contains(event.relatedTarget)) {
+      return;
+    }
+
+    hidePlotTooltip();
+  }
+
   mountMovableCell(container, {
     key: "farm-plot",
     selector: "[data-farm-cell]",
@@ -86,6 +259,10 @@ export function mountPlot(container) {
       return true;
     },
   });
+
+  container.addEventListener("pointerover", showPlotTooltip);
+  container.addEventListener("pointermove", movePlotTooltip);
+  container.addEventListener("pointerout", leavePlotTooltip);
 
   container.addEventListener("click", (event) => {
     const seedButton = event.target.closest("[data-seed-choice]");
@@ -254,7 +431,10 @@ export function mountPlot(container) {
     `;
   }
 
-  onStateChange(render);
+  onStateChange(() => {
+    render();
+    updatePlotTooltip();
+  });
   onProgressChange(updateProgress);
   render();
   window.addEventListener("resize", render);
@@ -302,5 +482,7 @@ export function mountPlot(container) {
         progressFill.style.width = `${growthProgress}%`;
       }
     }
+
+    updatePlotTooltip();
   }
 }

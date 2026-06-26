@@ -2,8 +2,15 @@ import { ANIMAL_ITEMS } from "./animals.js";
 import { MATERIALS, getProduct, getProductSellPrice, sortProductsByBuyPrice, sortProductsByCoinValue } from "./catalog.js";
 import { attachSeedInfoTooltip } from "./seedInfoTooltip.js";
 import { CROP_ITEMS } from "./seeds.js";
+import { addProductToSellStand, getSellCellFromPoint } from "./sell.js";
+import { getAnimalPenDropTargetFromPoint } from "./animalPen.js";
+import { getChickenCoopDropTargetFromPoint } from "./chickenCoop.js";
 import {
+  addAnimalFoodToPen,
+  addAnimalToPen,
+  addChickenFoodToCoop,
   addShoppingItem,
+  bakeBread,
   buildAnimalFeeder,
   buildAnimalPen,
   buildBakery,
@@ -17,7 +24,9 @@ import {
   canBuildMill,
   getBarnItemQuantity,
   getNextLandPlotCost,
+  getShoppingListTotal,
   isBuildingBuilt,
+  millWheatToFlour,
   onStateChange,
   purchaseShoppingList,
   removeShoppingItem,
@@ -28,6 +37,7 @@ import { renderEmpty, renderSection } from "./pageShared.js";
 
 const SWITCH_ANIMATION_MS = 180;
 const BASKET_START_POSITION = { left: 540, top: 92 };
+const BARN_DRAG_THRESHOLD = 4;
 const PANEL_TITLES = {
   barn: "Barn",
   shop: "Shop",
@@ -55,6 +65,8 @@ let barnSortIndex = 0;
 let isBasketOpen = false;
 let basketPosition = { ...BASKET_START_POSITION };
 let basketDrag = null;
+let barnItemDrag = null;
+let sidePanelTooltip = null;
 const collapsedSections = new Set();
 
 function getCategoryClass(product) {
@@ -71,6 +83,26 @@ function getDisplayName(product) {
     return (product.marketName || product.inventoryName || "").replace(/\s+seed$/i, "");
   }
   return product?.marketName || product?.inventoryName || "Item";
+}
+
+function isBarnSellableProduct(product) {
+  return Boolean(product && (product.category === "crops" || product.category === "processed") && getProductSellPrice(product.id) > 0);
+}
+
+function isBarnDraggableProduct(product) {
+  return Boolean(product && ["animals", "crops", "processed"].includes(product.category));
+}
+
+function getBarnItemTypeText(product) {
+  if (product?.category === "seeds") {
+    return "Seed";
+  }
+
+  if (product?.category === "crops") {
+    return "Crop";
+  }
+
+  return "";
 }
 
 function sectionOpen(sectionKey) {
@@ -94,6 +126,11 @@ function getShoppingEntries() {
     })
     .filter(Boolean)
     .sort((first, second) => sortProductsByBuyPrice(first.product, second.product));
+}
+
+function getBarnSellDropTargetFromPoint(x, y) {
+  const element = document.elementFromPoint(x, y);
+  return element?.closest?.("[data-barn-sell-drop]") || null;
 }
 
 function getSortedBarnEntries() {
@@ -120,18 +157,19 @@ function getSortedBarnEntries() {
   });
 }
 
-function renderInventoryTile(product, value, { isButton = false, buttonAttribute = "" } = {}) {
+function renderInventoryTile(product, value, { isButton = false, buttonAttribute = "", className = "", detail = "" } = {}) {
   const tag = isButton ? "button" : "div";
   const typeAttribute = isButton ? 'type="button"' : "";
   return `
     <${tag}
       ${typeAttribute}
-      class="panel-item-tile ${isButton ? "panel-item-tile--button" : ""} ${getCategoryClass(product)}"
+      class="panel-item-tile ${isButton ? "panel-item-tile--button" : ""} ${className} ${getCategoryClass(product)}"
       ${buttonAttribute}
       data-item-info-product="${product.id}"
     >
       <span class="panel-item-tile__bar" aria-hidden="true"></span>
       <span class="panel-item-tile__name">${getDisplayName(product)}</span>
+      ${detail ? `<span class="panel-item-tile__detail">${detail}</span>` : ""}
       <span class="panel-item-tile__value">${value}</span>
     </${tag}>
   `;
@@ -143,11 +181,25 @@ function renderBarnPanel() {
   return `
     <div class="barn-panel-toolbar">
       <button type="button" class="page-action barn-sort-button" data-barn-sort>Sort: ${sort.label}</button>
+      <button
+        type="button"
+        class="barn-send-to-market"
+        data-barn-sell-drop
+        aria-label="Send to market"
+        title="Drop sellable barn items here"
+      >
+        <span class="barn-send-to-market__icon" aria-hidden="true">↗</span>
+        <span class="barn-send-to-market__label">Send to market</span>
+      </button>
     </div>
     ${
       entries.length > 0
         ? `<div class="panel-item-grid">${entries
-            .map(({ product, quantity }) => renderInventoryTile(product, `x${quantity}`))
+            .map(({ product, quantity }) => renderInventoryTile(product, `x${quantity}`, {
+              buttonAttribute: isBarnDraggableProduct(product) ? `data-barn-drag-product="${product.id}"` : "",
+              className: isBarnDraggableProduct(product) ? "panel-item-tile--draggable" : "",
+              detail: getBarnItemTypeText(product),
+            }))
             .join("")}</div>`
         : renderEmpty()
     }
@@ -156,6 +208,8 @@ function renderBarnPanel() {
 
 function renderShoppingList() {
   const entries = getShoppingEntries();
+  const total = getShoppingListTotal();
+  const remainingCoins = Math.max(0, state.coins - total);
   const body = entries.length > 0
     ? `
       <div class="page-list">
@@ -168,7 +222,7 @@ function renderShoppingList() {
           `)
           .join("")}
       </div>
-      <button type="button" class="page-primary-action" data-shop-purchase>Purchase</button>
+      <button type="button" class="shopping-purchase" data-shop-purchase>Purchase ${total} | ${remainingCoins} left</button>
     `
     : renderEmpty("Basket empty");
 
@@ -230,14 +284,14 @@ function getBuildSections() {
           label: "Bakery",
           built: isBuildingBuilt("bakery"),
           canBuild: canBuildBakery(),
-          cost: `Wood ${wood}/5 - Nails ${nails}/5`,
+          cost: `Wood ${wood}/75 - Nails ${nails}/25`,
         },
         {
           id: "mill",
           label: "Mill",
           built: isBuildingBuilt("mill"),
           canBuild: canBuildMill(),
-          cost: `Wood ${wood}/25`,
+          cost: `Wood ${wood}/35`,
         },
       ],
     },
@@ -250,14 +304,14 @@ function getBuildSections() {
           label: "Chicken Coop",
           built: isBuildingBuilt("chickenCoop"),
           canBuild: canBuildChickenCoop(),
-          cost: `Wood ${wood}/50`,
+          cost: `Wood ${wood}/25`,
         },
         {
           id: "animalPen",
           label: "Cow Pen",
           built: isBuildingBuilt("animalPen"),
           canBuild: canBuildAnimalPen(),
-          cost: `Wood ${wood}/75`,
+          cost: `Wood ${wood}/55`,
         },
         {
           id: "animalFeeder",
@@ -360,6 +414,11 @@ function updateBasketVisibility(basketRoot, basketButton) {
   }
 }
 
+function openBasket(basketRoot, basketButton) {
+  isBasketOpen = true;
+  updateBasketVisibility(basketRoot, basketButton);
+}
+
 function closePanel(panelRoot, tabRoot, basketRoot, basketButton) {
   activePanel = null;
   isBasketOpen = false;
@@ -373,6 +432,11 @@ function closePanel(panelRoot, tabRoot, basketRoot, basketButton) {
 
 function openPanel(panelKey, panelRoot, contentRoot, titleRoot, tabRoot, basketRoot, basketButton) {
   window.clearTimeout(switchTimer);
+  if (activePanel === panelKey && panelRoot.classList.contains("is-open")) {
+    closePanel(panelRoot, tabRoot, basketRoot, basketButton);
+    return;
+  }
+
   if (activePanel && activePanel !== panelKey && panelRoot.classList.contains("is-open")) {
     panelRoot.classList.remove("is-open");
     activePanel = panelKey;
@@ -396,7 +460,7 @@ function openPanel(panelKey, panelRoot, contentRoot, titleRoot, tabRoot, basketR
   updateBasketVisibility(basketRoot, basketButton);
 }
 
-function handlePanelAction(event) {
+function handlePanelAction(event, basketRoot = null, basketButton = null) {
   if (event.target.closest("[data-barn-sort]")) {
     barnSortIndex = (barnSortIndex + 1) % BARN_SORTS.length;
     event.currentTarget.innerHTML = renderBarnPanel();
@@ -422,6 +486,7 @@ function handlePanelAction(event) {
   const buyCell = event.target.closest("[data-shop-buy]");
   if (buyCell) {
     addShoppingItem(buyCell.dataset.shopBuy);
+    openBasket(basketRoot, basketButton);
     return;
   }
 
@@ -520,7 +585,193 @@ function handleBasketPointerUp(event) {
   basketDrag = null;
 }
 
-function handlePanelKeydown(event) {
+function clearBarnItemDrag() {
+  if (!barnItemDrag) {
+    return;
+  }
+
+  window.removeEventListener("pointermove", handleBarnItemPointerMove);
+  window.removeEventListener("pointerup", handleBarnItemPointerUp);
+  window.removeEventListener("pointercancel", handleBarnItemPointerCancel);
+  barnItemDrag.tile.classList.remove("is-dragging");
+  document.body.classList.remove("is-dragging-cell");
+
+  try {
+    barnItemDrag.tile.releasePointerCapture(barnItemDrag.pointerId);
+  } catch {
+    // Best effort.
+  }
+
+  if (barnItemDrag.ghost) {
+    barnItemDrag.ghost.remove();
+  }
+
+  barnItemDrag = null;
+}
+
+function createBarnItemGhost(tile) {
+  const rect = tile.getBoundingClientRect();
+  const ghost = tile.cloneNode(true);
+  ghost.classList.remove("is-dragging");
+  ghost.classList.add("panel-item-tile--ghost");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.position = "fixed";
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.pointerEvents = "none";
+  ghost.style.margin = "0";
+  ghost.style.zIndex = "5000";
+  document.body.append(ghost);
+  return ghost;
+}
+
+function getBuildingElementFromPoint(x, y, selector) {
+  return document.elementFromPoint(x, y)?.closest?.(selector) || null;
+}
+
+function dropBarnItemIntoBuilding(productId, x, y) {
+  const product = getProduct(productId);
+  if (!product) {
+    return false;
+  }
+
+  const animalPenDropTarget = getAnimalPenDropTargetFromPoint(x, y);
+  if (animalPenDropTarget === "food") {
+    return addAnimalFoodToPen(productId, 1);
+  }
+
+  if (animalPenDropTarget === "animals") {
+    return product.penBuildingId === "animalPen" ? addAnimalToPen(productId) : false;
+  }
+
+  const chickenCoopDropTarget = getChickenCoopDropTargetFromPoint(x, y);
+  if (chickenCoopDropTarget === "food") {
+    return addChickenFoodToCoop(productId, 1);
+  }
+
+  if (chickenCoopDropTarget === "animals") {
+    return product.penBuildingId === "chickenCoop" ? addAnimalToPen(productId) : false;
+  }
+
+  if (getBuildingElementFromPoint(x, y, "[data-mill-cell]")) {
+    if (productId === "wheatCrop") {
+      return millWheatToFlour();
+    }
+    return false;
+  }
+
+  if (getBuildingElementFromPoint(x, y, "[data-bakery-cell]")) {
+    if (productId === "flour") {
+      return bakeBread();
+    }
+    return false;
+  }
+
+  return false;
+}
+
+function handleBarnItemPointerDown(event) {
+  const tile = event.target.closest("[data-barn-drag-product]");
+  if (!tile || event.button !== 0) {
+    return;
+  }
+
+  const productId = tile.dataset.barnDragProduct;
+  const product = getProduct(productId);
+  if (!isBarnDraggableProduct(product)) {
+    return;
+  }
+
+  const rect = tile.getBoundingClientRect();
+  barnItemDrag = {
+    productId,
+    tile,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startLeft: rect.left,
+    startTop: rect.top,
+    dragged: false,
+    ghost: null,
+  };
+
+  try {
+    tile.setPointerCapture(event.pointerId);
+  } catch {
+    // Best effort.
+  }
+
+  window.addEventListener("pointermove", handleBarnItemPointerMove, { passive: false });
+  window.addEventListener("pointerup", handleBarnItemPointerUp);
+  window.addEventListener("pointercancel", handleBarnItemPointerCancel);
+}
+
+function handleBarnItemPointerMove(event) {
+  if (!barnItemDrag || event.pointerId !== barnItemDrag.pointerId) {
+    return;
+  }
+
+  const deltaX = event.clientX - barnItemDrag.startX;
+  const deltaY = event.clientY - barnItemDrag.startY;
+  if (!barnItemDrag.dragged && Math.hypot(deltaX, deltaY) < BARN_DRAG_THRESHOLD) {
+    return;
+  }
+
+  if (!barnItemDrag.dragged) {
+    barnItemDrag.dragged = true;
+    sidePanelTooltip?.hide();
+    barnItemDrag.ghost = createBarnItemGhost(barnItemDrag.tile);
+    barnItemDrag.tile.classList.add("is-dragging");
+    document.body.classList.add("is-dragging-cell");
+  }
+
+  if (barnItemDrag.ghost) {
+    barnItemDrag.ghost.style.left = `${barnItemDrag.startLeft + deltaX}px`;
+    barnItemDrag.ghost.style.top = `${barnItemDrag.startTop + deltaY}px`;
+  }
+
+  event.preventDefault();
+}
+
+function handleBarnItemPointerUp(event) {
+  if (!barnItemDrag || event.pointerId !== barnItemDrag.pointerId) {
+    return;
+  }
+
+  const snapshot = barnItemDrag;
+  const wasDragged = snapshot.dragged;
+  clearBarnItemDrag();
+
+  if (!wasDragged) {
+    return;
+  }
+
+  if (dropBarnItemIntoBuilding(snapshot.productId, event.clientX, event.clientY)) {
+    event.preventDefault();
+    return;
+  }
+
+  const product = getProduct(snapshot.productId);
+  if (isBarnSellableProduct(product) && getBarnSellDropTargetFromPoint(event.clientX, event.clientY)) {
+    addProductToSellStand(snapshot.productId);
+    event.preventDefault();
+    return;
+  }
+
+  if (isBarnSellableProduct(product) && getSellCellFromPoint(event.clientX, event.clientY)) {
+    addProductToSellStand(snapshot.productId);
+  }
+
+  event.preventDefault();
+}
+
+function handleBarnItemPointerCancel() {
+  clearBarnItemDrag();
+}
+
+function handlePanelKeydown(event, basketRoot = null, basketButton = null) {
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
@@ -538,6 +789,7 @@ function handlePanelKeydown(event) {
 
   event.preventDefault();
   addShoppingItem(buyCell.dataset.shopBuy);
+  openBasket(basketRoot, basketButton);
 }
 
 export function mountSidePanels() {
@@ -567,7 +819,7 @@ export function mountSidePanels() {
   basketRoot.setAttribute("aria-label", "Basket");
   document.querySelector(".scene")?.append(basketRoot);
 
-  attachSeedInfoTooltip(contentRoot);
+  sidePanelTooltip = attachSeedInfoTooltip(contentRoot);
   updateTabs(tabRoot, null);
   updateBasketVisibility(basketRoot, basketButton);
 
@@ -591,8 +843,9 @@ export function mountSidePanels() {
   basketRoot.addEventListener("pointerup", handleBasketPointerUp);
   basketRoot.addEventListener("pointercancel", handleBasketPointerUp);
 
-  contentRoot.addEventListener("click", handlePanelAction);
-  contentRoot.addEventListener("keydown", handlePanelKeydown);
+  contentRoot.addEventListener("click", (event) => handlePanelAction(event, basketRoot, basketButton));
+  contentRoot.addEventListener("keydown", (event) => handlePanelKeydown(event, basketRoot, basketButton));
+  contentRoot.addEventListener("pointerdown", handleBarnItemPointerDown);
   contentRoot.addEventListener("toggle", (event) => {
     const section = event.target.closest?.("[data-section-key]");
     if (!section) {

@@ -7,6 +7,8 @@ export const egg = {
   sellPrice: 2,
   productionDurationMs: 180000,
   productionYieldMin: 1,
-  productionYieldMax: 3,
-  foodCost: {},
+  productionYieldMax: 1,
+  foodCost: {
+    cornCrop: 2,
+  },
 };

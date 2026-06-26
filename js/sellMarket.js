@@ -5,15 +5,13 @@ import {
   getSellEntries,
   getSellTotal,
   isCellHidden,
-  moveCell,
   onStateChange,
   removeSellItem,
   sellQueuedItems,
-  state,
 } from "./state.js";
-import { mountMovableCell } from "./drag.js";
 
 const SELL_MARKET_WIDTH = 260;
+const SELL_MARKET_MARGIN = 16;
 const SELL_MARKET_OUTER_PADDING = 16;
 const SELL_MARKET_HEADER_HEIGHT = 22;
 const SELL_MARKET_BODY_TOP_GAP = 6;
@@ -21,17 +19,6 @@ const SELL_MARKET_ITEM_HEIGHT = 50;
 const SELL_MARKET_ITEM_GAP = 6;
 const SELL_MARKET_ACTION_HEIGHT = 30;
 const SELL_MARKET_EMPTY_HEIGHT = 29;
-
-function clampToWorkspace(workspace, left, top) {
-  const bounds = getSellMarketBounds();
-  const maxLeft = Math.max(0, workspace.clientWidth - bounds.width);
-  const maxTop = Math.max(0, workspace.clientHeight - bounds.height);
-
-  return {
-    left: Math.min(maxLeft, Math.max(0, left)),
-    top: Math.min(maxTop, Math.max(0, top)),
-  };
-}
 
 function getSellMarketBounds() {
   const entryCount = getSellEntries().length;
@@ -52,9 +39,23 @@ function getSellMarketBounds() {
   };
 }
 
+function getFixedSellMarketPosition(workspace, bounds) {
+  const width = workspace?.clientWidth || window.innerWidth || 1024;
+  return {
+    left: Math.max(SELL_MARKET_MARGIN, width - bounds.width - SELL_MARKET_MARGIN),
+    top: SELL_MARKET_MARGIN,
+  };
+}
+
+function getVisibleSellMarketHeight(workspace, bounds) {
+  const height = workspace?.clientHeight || window.innerHeight || 768;
+  return Math.min(bounds.height, Math.max(120, height - SELL_MARKET_MARGIN * 2));
+}
+
 function renderSellEntry(product, quantity) {
   const ownedQuantity = getBarnItemQuantity(product.id);
   const canIncrease = quantity < ownedQuantity;
+  const remainingQuantity = Math.max(0, ownedQuantity - quantity);
 
   return `
     <div class="sell-item">
@@ -66,6 +67,7 @@ function renderSellEntry(product, quantity) {
         <button type="button" class="sell-quantity__button" data-sell-adjust="${product.id}" data-sell-delta="-1" aria-label="Sell fewer ${product.inventoryName}">-</button>
         <span class="sell-quantity__value">x${quantity}</span>
         <button type="button" class="sell-quantity__button" data-sell-adjust="${product.id}" data-sell-delta="1" ${canIncrease ? "" : "disabled"} aria-label="Sell more ${product.inventoryName}">+</button>
+        ${canIncrease ? `<button type="button" class="sell-quantity__all" data-sell-all="${product.id}" data-sell-delta="${remainingQuantity}" aria-label="Sell all ${product.inventoryName}">all</button>` : ""}
         <button type="button" class="sell-item__remove" data-remove-sell-product="${product.id}" aria-label="Remove ${product.inventoryName} from sell list">x</button>
       </div>
     </div>
@@ -93,21 +95,18 @@ function renderSellPanel() {
 }
 
 export function mountSellMarket(container) {
-  mountMovableCell(container, {
-    key: "sellMarket",
-    selector: "[data-sell-market-cell]",
-    dragHandle: ".market-header",
-    onDrop: (_dragSnapshot, finalPosition) => {
-      moveCell("sellMarket", finalPosition.left, finalPosition.top);
-      return true;
-    },
-  });
-
   container.addEventListener("click", (event) => {
     const adjustButton = event.target.closest("[data-sell-adjust]");
     if (adjustButton) {
       event.preventDefault();
       adjustSellItem(adjustButton.dataset.sellAdjust, Number(adjustButton.dataset.sellDelta));
+      return;
+    }
+
+    const allButton = event.target.closest("[data-sell-all]");
+    if (allButton) {
+      event.preventDefault();
+      adjustSellItem(allButton.dataset.sellAll, Number(allButton.dataset.sellDelta));
       return;
     }
 
@@ -131,15 +130,14 @@ export function mountSellMarket(container) {
       return;
     }
 
-    const position = clampToWorkspace(
-      container.closest(".workspace"),
-      state.cells.sellMarket.left,
-      state.cells.sellMarket.top
-    );
     const bounds = getSellMarketBounds();
+    const workspace = container.closest(".workspace");
+    const position = getFixedSellMarketPosition(workspace, bounds);
+    const visibleHeight = getVisibleSellMarketHeight(workspace, bounds);
+    const isScrollable = visibleHeight < bounds.height;
 
     container.innerHTML = `
-      <section class="market-cell sell-market-cell is-open" data-cell-key="sellMarket" data-sell-market-cell style="left:${position.left}px; top:${position.top}px; width:${bounds.width}px; height:${bounds.height}px;" aria-label="Market">
+      <section class="market-cell sell-market-cell ${isScrollable ? "is-scrollable" : ""} is-open" data-cell-key="sellMarket" data-sell-market-cell style="left:${position.left}px; top:${position.top}px; width:${bounds.width}px; height:${visibleHeight}px;" aria-label="Market">
         <div class="market-header">
           <span class="market-title">
             <span class="market-title__icon" aria-hidden="true">⚖</span>
@@ -154,5 +152,6 @@ export function mountSellMarket(container) {
   }
 
   onStateChange(render);
+  window.addEventListener("resize", render);
   render();
 }

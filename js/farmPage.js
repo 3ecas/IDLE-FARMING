@@ -1,14 +1,24 @@
 import { mountPlot } from "./plot.js";
 import { mountSellMarket } from "./sellMarket.js";
+import { mountAnimalFeeder } from "./animalFeeder.js";
+import { mountAnimalPen } from "./animalPen.js";
+import { mountBakery } from "./bakery.js";
+import { mountChickenCoop } from "./chickenCoop.js";
+import { mountMill } from "./mill.js";
 import { mountFarmCursors } from "./cursor.js";
 import { bootstrapGamePersistence } from "./persistence.js";
 import { clearSelectedInventoryItem } from "./inventory.js";
 import { mountInfoPanel } from "./infoPanel.js";
 import { mountSidePanels } from "./sidePanels.js";
-import { moveCell, onStateChange, restartFarm, showCell, state } from "./state.js";
+import { onStateChange, restartFarm, showCell, stabilizeLayoutPositions, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
 const cellMount = document.getElementById("cell-mount");
+const millMount = document.getElementById("mill-mount");
+const bakeryMount = document.getElementById("bakery-mount");
+const animalFeederMount = document.getElementById("animal-feeder-mount");
+const animalPenMount = document.getElementById("animal-pen-mount");
+const chickenCoopMount = document.getElementById("chicken-coop-mount");
 const sellMarketMount = document.getElementById("sell-market-mount");
 const restartButton = document.querySelector("[data-restart-farm]");
 
@@ -18,14 +28,21 @@ function renderStatus() {
 
 bootstrapGamePersistence();
 showCell("sellMarket");
-moveCell("sellMarket", 480, 48);
 mountPlot(cellMount);
+mountMill(millMount);
+mountBakery(bakeryMount);
+mountAnimalFeeder(animalFeederMount);
+mountAnimalPen(animalPenMount);
+mountChickenCoop(chickenCoopMount);
 mountSellMarket(sellMarketMount);
 mountInfoPanel();
 mountSidePanels();
 mountFarmCursors();
 onStateChange(renderStatus);
 renderStatus();
+window.addEventListener("resize", () => {
+  stabilizeLayoutPositions();
+});
 
 document.addEventListener("pointerdown", (event) => {
   const interactiveElement = event.target.closest(
@@ -40,6 +57,5 @@ if (restartButton) {
   restartButton.addEventListener("click", () => {
     restartFarm();
     showCell("sellMarket");
-    moveCell("sellMarket", 480, 48);
   });
 }

@@ -241,7 +241,7 @@ body.is-night .sell-market-cell {
   left: 10px;
   top: 50%;
   display: grid;
-  gap: 7px;
+  gap: 10px;
   transform: translateY(-50%);
 }
 
@@ -249,17 +249,17 @@ body.is-night .sell-market-cell {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 5px;
-  width: 78px;
-  min-height: 36px;
-  padding: 6px 7px;
+  gap: 7px;
+  width: 108px;
+  min-height: 58px;
+  padding: 11px 12px;
   border: 1px solid rgba(127, 196, 127, 0.22);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 6px 18px rgba(67, 94, 67, 0.08);
   color: var(--foreground);
   cursor: pointer;
-  font-size: 0.62rem;
+  font-size: 0.82rem;
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
@@ -272,7 +272,8 @@ body.is-night .sell-market-cell {
 
 .side-tab__icon {
   flex: 0 0 auto;
-  width: 16px;
+  width: 22px;
+  font-size: 1.12rem;
   line-height: 1;
   text-align: center;
 }
@@ -280,9 +281,9 @@ body.is-night .sell-market-cell {
 .side-panel-shell {
   position: fixed;
   z-index: 3100;
-  left: 96px;
+  left: 130px;
   top: 50%;
-  width: min(430px, calc(100vw - 116px));
+  width: min(430px, calc(100vw - 150px));
   max-height: calc(100vh - 30px);
   pointer-events: none;
   transform: translate(calc(-100% - 112px), -50%);
@@ -291,7 +292,7 @@ body.is-night .sell-market-cell {
 }
 
 .side-panel-shell[data-active-panel="build"] {
-  width: min(350px, calc(100vw - 116px));
+  width: min(350px, calc(100vw - 150px));
 }
 
 .side-panel-shell.is-open {
@@ -424,8 +425,10 @@ body.is-night .money-value {
 
 .barn-panel-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
+  gap: 8px;
 }
 
 .barn-sort-button {
@@ -434,7 +437,7 @@ body.is-night .money-value {
 
 .panel-item-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -458,6 +461,20 @@ body.is-night .money-value {
   cursor: pointer;
 }
 
+.panel-item-tile--draggable {
+  cursor: grab;
+}
+
+.panel-item-tile.is-dragging {
+  opacity: 0.45;
+}
+
+.panel-item-tile--ghost {
+  opacity: 0.96;
+  box-shadow: 0 12px 30px rgba(85, 64, 120, 0.16);
+  transform: scale(1.04);
+}
+
 .panel-item-tile--button:hover,
 .panel-item-tile--button:focus-visible {
   border-color: rgba(127, 196, 127, 0.42);
@@ -478,6 +495,21 @@ body.is-night .money-value {
   font-weight: 800;
   line-height: 1.05;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-item-tile__detail {
+  position: absolute;
+  left: 5px;
+  bottom: 3px;
+  max-width: calc(100% - 34px);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.46rem;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -1019,6 +1051,18 @@ body.is-night .panel-item-tile--button:focus-visible {
   width: 260px;
   min-height: 0;
   height: auto;
+  max-height: calc(100vh - 32px);
+  overflow: visible;
+}
+
+.sell-market-cell.is-scrollable {
+  overflow: hidden;
+}
+
+.sell-market-cell.is-scrollable .market-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .market-sell-drop {
@@ -1460,7 +1504,7 @@ body.is-night .panel-item-tile--button:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   padding: 3px 0;
   font-size: 0.58rem;
   line-height: 1.1;
@@ -1471,11 +1515,24 @@ body.is-night .panel-item-tile--button:focus-visible {
 }
 
 .seed-info-tooltip__row strong {
-  max-width: 96px;
+  max-width: 76px;
   overflow: hidden;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.plot-info-tooltip {
+  width: 178px;
+}
+
+.plot-info-tooltip__row {
+  align-items: start;
+}
+
+.plot-info-tooltip__row strong {
+  max-width: 92px;
+  white-space: normal;
 }
 
 .build-cell,
@@ -1626,6 +1683,60 @@ body.is-night .panel-item-tile--button:focus-visible {
   background: rgba(127, 196, 127, 0.14);
   color: var(--foreground);
   transform: translateY(-1px);
+}
+
+.barn-send-to-market {
+  display: inline-grid;
+  grid-template-columns: 18px auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 8px 4px 4px;
+  border: 1px dashed rgba(127, 196, 127, 0.42);
+  border-radius: 8px;
+  background: rgba(127, 196, 127, 0.08);
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.barn-send-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -2px -2px 4px;
+}
+
+.barn-send-to-market__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(127, 196, 127, 0.16);
+  color: var(--foreground);
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.barn-send-to-market__label {
+  display: block;
+  line-height: 1.05;
+}
+
+.barn-send-to-market:focus-visible,
+.barn-send-to-market:hover {
+  transform: translateY(-1px);
+  border-color: rgba(127, 196, 127, 0.6);
+  background: rgba(127, 196, 127, 0.14);
+  color: var(--foreground);
+}
+
+.barn-send-to-market {
+  justify-self: end;
 }
 
 .shopping-header {
@@ -1947,6 +2058,35 @@ button.inventory-tile.is-dragging {
   background: #f7fbf4;
 }
 
+.chicken-coop-food__controls {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 4px;
+}
+
+.chicken-coop-food__control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(127, 196, 127, 0.28);
+  border-radius: 6px;
+  background: #eff7ea;
+  color: #2d4a2c;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chicken-coop-food__control:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
 .animal-pen-food__label,
 .animal-pen-food__value {
   line-height: 1;
@@ -2082,6 +2222,21 @@ button.inventory-tile.is-dragging {
   transform: none;
 }
 
+.sell-quantity__all {
+  min-width: 26px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid rgba(127, 196, 127, 0.22);
+  border-radius: 999px;
+  background: #f3f9ef;
+  cursor: pointer;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  touch-action: manipulation;
+}
+
 .sell-quantity__value {
   color: var(--muted);
   font-size: 0.7rem;
@@ -2103,7 +2258,9 @@ button.inventory-tile.is-dragging {
 .sell-action:hover,
 .sell-action:focus-visible,
 .sell-quantity__button:hover,
-.sell-quantity__button:focus-visible {
+.sell-quantity__button:focus-visible,
+.sell-quantity__all:hover,
+.sell-quantity__all:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(127, 196, 127, 0.34);
   background: #ecf7e5;
@@ -2385,6 +2542,7 @@ body.is-night .tools-cell,
 body.is-night .menu-button,
 body.is-night .tool-button,
 body.is-night .market-toggle,
+body.is-night .barn-send-to-market,
 body.is-night .cell-close,
 body.is-night .shopping-toggle,
 body.is-night .page-section,
@@ -2417,6 +2575,7 @@ body.is-night .sell-item,
 body.is-night .sell-empty,
 body.is-night .sell-action,
 body.is-night .sell-quantity__button,
+body.is-night .sell-quantity__all,
 body.is-night .sell-item__remove,
 body.is-night .shopping-item,
 body.is-night .shopping-empty,
@@ -2474,6 +2633,7 @@ body.is-night .delete-zone * {
 body.is-night .page-item__meta,
 body.is-night .page-item__price,
 body.is-night .panel-item-tile__value,
+body.is-night .panel-item-tile__detail,
 body.is-night .page-section__summary::after,
 body.is-night .seed-picker__meta,
 body.is-night .seed-picker__empty,
@@ -2483,6 +2643,7 @@ body.is-night .build-product__cost,
 body.is-night .mill-action__ingredients,
 body.is-night .animal-feeder-slot__status,
 body.is-night .animal-pen-food__label,
+body.is-night .animal-pen-food__value,
 body.is-night .animal-item__status,
 body.is-night .animal-pen-empty,
 body.is-night .sell-item__price,
@@ -2504,6 +2665,8 @@ body.is-night .money-add:hover,
 body.is-night .money-add:focus-visible,
 body.is-night .market-toggle:hover,
 body.is-night .market-toggle:focus-visible,
+body.is-night .barn-send-to-market:hover,
+body.is-night .barn-send-to-market:focus-visible,
 body.is-night .cell-close:hover,
 body.is-night .cell-close:focus-visible,
 body.is-night .shopping-toggle:hover,
@@ -2536,6 +2699,8 @@ body.is-night .sell-action:hover,
 body.is-night .sell-action:focus-visible,
 body.is-night .sell-quantity__button:hover,
 body.is-night .sell-quantity__button:focus-visible,
+body.is-night .sell-quantity__all:hover,
+body.is-night .sell-quantity__all:focus-visible,
 body.is-night .sell-item__remove:hover,
 body.is-night .sell-item__remove:focus-visible,
 body.is-night button.inventory-item:hover,
@@ -2553,6 +2718,24 @@ body.is-night .delete-zone.is-active {
   color: #fff;
 }
 
+body.is-night .barn-send-to-market {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+body.is-night .barn-send-to-market__icon {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+body.is-night .barn-send-to-market:hover,
+body.is-night .barn-send-to-market:focus-visible {
+  border-color: rgba(255, 255, 255, 0.44);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
 body.is-night .farm-cell__progress,
 body.is-night .day-night-track {
   background: rgba(255, 255, 255, 0.22);
@@ -2560,4 +2743,21 @@ body.is-night .day-night-track {
 
 body.is-night .farm-cell__progress-fill {
   background: #fff;
+}
+
+body.is-night .animal-pen-food,
+body.is-night .chicken-coop-food {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: #1f2b42;
+  color: #fff;
+}
+
+body.is-night .chicken-coop-food__control {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: #2a3a58;
+  color: #fff;
+}
+
+body.is-night .chicken-coop-food__control:disabled {
+  opacity: 0.42;
 }

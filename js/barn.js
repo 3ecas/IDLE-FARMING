@@ -118,6 +118,11 @@ function getFarmCellFromPoint(x, y) {
   return element?.closest?.("[data-farm-cell]") || null;
 }
 
+function getBarnSellDropTargetFromPoint(x, y) {
+  const element = document.elementFromPoint(x, y);
+  return Boolean(element?.closest?.("[data-barn-sell-drop]"));
+}
+
 function handleSeedDragPointerMove(event) {
   if (!activeSeedDrag || event.pointerId !== activeSeedDrag.pointerId) {
     return;
@@ -187,6 +192,8 @@ function handleSeedDragPointerUp(event) {
     if (penTarget === "food") {
       addAnimalFoodToPen(snapshot.productId);
     }
+  } else if (getBarnSellDropTargetFromPoint(event.clientX, event.clientY)) {
+    addProductToSellStand(snapshot.productId);
   } else {
     const sellCell = getSellCellFromPoint(event.clientX, event.clientY);
     if (sellCell) {
@@ -358,7 +365,19 @@ export function mountBarn(container) {
     const tabEntries = getPanelEntries(entries, activeTab);
 
     container.innerHTML = `
-      <section class="barn-cell" data-cell-key="barn" data-barn-cell style="left:${position.left}px; top:${position.top}px;" aria-label="${PANEL_TITLE}">
+      <section class="barn-cell barn-cell--with-dock" data-cell-key="barn" data-barn-cell style="left:${position.left}px; top:${position.top}px;" aria-label="${PANEL_TITLE}">
+        <div class="barn-send-row">
+          <button
+            type="button"
+            class="barn-send-to-market"
+            data-barn-sell-drop
+            aria-label="Send to market"
+            title="Drag barn items here to sell them"
+          >
+            <span class="barn-send-to-market__icon" aria-hidden="true">↗</span>
+            <span class="barn-send-to-market__label">Send to market</span>
+          </button>
+        </div>
         <div class="barn-header">
           <span class="barn-title">
             <span class="barn-title__icon" aria-hidden="true">📦</span>

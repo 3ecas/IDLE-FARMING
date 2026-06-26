@@ -58,6 +58,30 @@ function renderRows(rows) {
     .join("");
 }
 
+function getCategoryDisplayText(product) {
+  if (product.category === "seeds") {
+    return "Seed";
+  }
+
+  if (product.category === "crops") {
+    return "Crop";
+  }
+
+  if (product.category === "animals") {
+    return "Animal";
+  }
+
+  if (product.category === "materials") {
+    return "Material";
+  }
+
+  if (product.category === "processed") {
+    return "Product";
+  }
+
+  return "Item";
+}
+
 function getSeedRows(product) {
   const crop = product.cropProductId ? getProduct(product.cropProductId) : null;
   return [
@@ -107,27 +131,30 @@ function getProcessedRows(product) {
 }
 
 function getItemRows(product) {
+  const typeRow = { label: "Type", value: getCategoryDisplayText(product) };
+
   if (product.category === "seeds") {
-    return getSeedRows(product);
+    return [typeRow, ...getSeedRows(product)];
   }
 
   if (product.category === "crops") {
-    return getCropRows(product);
+    return [typeRow, ...getCropRows(product)];
   }
 
   if (product.category === "animals") {
-    return getAnimalRows(product);
+    return [typeRow, ...getAnimalRows(product)];
   }
 
   if (product.category === "materials") {
-    return getMaterialRows(product);
+    return [typeRow, ...getMaterialRows(product)];
   }
 
   if (product.category === "processed") {
-    return getProcessedRows(product);
+    return [typeRow, ...getProcessedRows(product)];
   }
 
   return [
+    typeRow,
     { label: "Price", value: product.price },
     { label: "Sell Price", value: getProductSellPrice(product.id) },
   ];

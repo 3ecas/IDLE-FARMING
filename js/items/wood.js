@@ -3,5 +3,5 @@ export const wood = {
   category: "materials",
   marketName: "Wood",
   inventoryName: "Wood",
-  price: 1,
+  price: 3,
 };

@@ -1,4 +1,4 @@
-import { getProduct, getProductSellPrice } from "./catalog.js";
+import { getProduct, getProductBuyPrice, getProductSellPrice } from "./catalog.js";
 import { getCellSize } from "./layout.js";
 
 const listeners = new Set();
@@ -10,6 +10,7 @@ let bakeryTicker = null;
 const GRID_SIZE = 24;
 const FARM_PLOT_SIZE = 72;
 const FARM_PLOT_SPAWN_GAP = 0;
+const STARTER_LAYOUT_MARGIN = 24;
 const FARM_PLOT_BASE_COST = 10;
 const FARM_PLOT_PRICE_GROWTH = 1.75;
 const FARM_PLOT_STORAGE_KEY = "idle-farm-farm-plots-v2";
@@ -21,16 +22,33 @@ const FARM_STAGE_MATURE = "mature";
 export const LAYOUT_SAVE_VERSION = "12";
 const STARTING_COINS = 5;
 const DEFAULT_HIDDEN_CELL_KEYS = ["market", "sellMarket", "barn", "build", "fastItems"];
+const LAYOUT_CELL_KEYS = [
+  "farm",
+  "market",
+  "sellMarket",
+  "shopping",
+  "money",
+  "barn",
+  "fastItems",
+  "menu",
+  "build",
+  "mill",
+  "bakery",
+  "animalFeeder",
+  "animalPen",
+  "chickenCoop",
+  "tools",
+];
 const CELL_REVEAL_GAP = 20;
-const MILL_WOOD_COST = 25;
+const MILL_WOOD_COST = 35;
 const MILL_NAIL_COST = 0;
-const BAKERY_WOOD_COST = 5;
-const BAKERY_NAIL_COST = 5;
+const BAKERY_WOOD_COST = 75;
+const BAKERY_NAIL_COST = 25;
 const ANIMAL_FEEDER_WOOD_COST = 125;
 const ANIMAL_FEEDER_NAIL_COST = 25;
-const ANIMAL_PEN_WOOD_COST = 75;
+const ANIMAL_PEN_WOOD_COST = 55;
 const ANIMAL_PEN_NAIL_COST = 0;
-const CHICKEN_COOP_WOOD_COST = 50;
+const CHICKEN_COOP_WOOD_COST = 25;
 const CHICKEN_COOP_NAIL_COST = 0;
 const BAKERY_STORAGE_KEY = "idle-farm-bakery-v1";
 const BAKERY_SAVE_VERSION = "1";
@@ -102,15 +120,30 @@ function snapToGrid(value) {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
+function clampCellPositionToWorkspace(key, position) {
+  const workspace = getWorkspaceSize();
+  const bounds = getCellSize(key);
+  return {
+    left: Math.min(
+      Math.max(0, workspace.width - bounds.width),
+      Math.max(0, Number.isFinite(position?.left) ? position.left : 0)
+    ),
+    top: Math.min(
+      Math.max(0, workspace.height - bounds.height),
+      Math.max(0, Number.isFinite(position?.top) ? position.top : 0)
+    ),
+  };
+}
+
 function readCellPosition(key, fallback) {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS[key]) || "{}");
-    return {
+    return clampCellPositionToWorkspace(key, {
       left: Number.isFinite(parsed.left) ? parsed.left : fallback.left,
       top: Number.isFinite(parsed.top) ? parsed.top : fallback.top,
-    };
+    });
   } catch {
-    return fallback;
+    return clampCellPositionToWorkspace(key, fallback);
   }
 }
 
@@ -119,6 +152,14 @@ function saveCellPosition(key, position) {
     localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(position));
   } catch {
     // Best effort.
+  }
+}
+
+function hasStoredCellPosition(key) {
+  try {
+    return localStorage.getItem(STORAGE_KEYS[key]) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -221,8 +262,40 @@ function saveStringArray(key, values) {
   }
 }
 
-function createStarterFarmPlots() {
-  const position = createFarmPlotRecord("farm-plot-0", DEFAULT_CELL_POSITIONS.farm, []);
+function clampPositionToWorkspace(position, size, margin = STARTER_LAYOUT_MARGIN) {
+  const workspace = getWorkspaceSize();
+  return {
+    left: Math.min(
+      Math.max(margin, workspace.width - size.width - margin),
+      Math.max(margin, position.left)
+    ),
+    top: Math.min(
+      Math.max(margin, workspace.height - size.height - margin),
+      Math.max(margin, position.top)
+    ),
+  };
+}
+
+function getCenteredStarterFarmPosition() {
+  const workspace = getWorkspaceSize();
+  const farmSize = { width: FARM_PLOT_SIZE, height: FARM_PLOT_SIZE };
+  return clampPositionToWorkspace({
+    left: Math.round((workspace.width - farmSize.width) / 2),
+    top: Math.round((workspace.height - farmSize.height) / 2),
+  }, farmSize);
+}
+
+function getTopRightSellMarketPosition() {
+  const workspace = getWorkspaceSize();
+  const marketSize = getCellSize("sellMarket");
+  return clampPositionToWorkspace({
+    left: workspace.width - marketSize.width - STARTER_LAYOUT_MARGIN,
+    top: STARTER_LAYOUT_MARGIN,
+  }, marketSize);
+}
+
+function createStarterFarmPlots(preferredPosition = getCenteredStarterFarmPosition()) {
+  const position = clampFarmPlotToWorkspace(preferredPosition);
   return [{
     id: "farm-plot-0",
     left: position.left,
@@ -286,7 +359,7 @@ function normalizeAnimalPenFood(food) {
       continue;
     }
 
-    normalized[productId] = Math.floor(nextQuantity);
+    normalized[productId] = nextQuantity;
   }
 
   return normalized;
@@ -455,7 +528,6 @@ export function getStarterLayoutPositions() {
   const gap = 16;
   const barnSize = getCellSize("barn");
   const marketSize = getCellSize("market");
-  const sellMarketSize = getCellSize("sellMarket");
   const moneySize = getCellSize("money");
   const menuSize = getCellSize("menu");
   const buildSize = getCellSize("build");
@@ -475,7 +547,6 @@ export function getStarterLayoutPositions() {
     Math.max(16, menuLeft),
     Math.max(16, workspace.width - Math.max(rightColumnWidth, moneySize.width) - 16)
   );
-  const popupLeftLeft = Math.max(16, Math.min(menuLeft - sellMarketSize.width - gap, workspace.width - sellMarketSize.width - 16));
   const buildTop = popupTop;
   const millTop = Math.min(workspace.height - millSize.height - 16, buildTop + buildSize.height + gap);
   const bakeryTop = Math.min(workspace.height - bakerySize.height - 16, millTop + millSize.height + gap);
@@ -486,7 +557,7 @@ export function getStarterLayoutPositions() {
   return {
     barn: { left: menuLeft, top: popupBottomTop },
     market: { left: menuLeft, top: popupTop },
-    sellMarket: { left: popupLeftLeft, top: popupTop },
+    sellMarket: getTopRightSellMarketPosition(),
     shopping: { left: menuLeft, top: popupTop },
     money: getPinnedMoneyPosition(),
     fastItems: { left: popupRightLeft, top: menuTop },
@@ -651,6 +722,24 @@ function isFarmPlotPositionFree(candidate, plots, excludePlotId = null) {
   );
 }
 
+function isFarmPlotPositionFreeFromPlots(candidate, plots, excludePlotId = null) {
+  return plots
+    .filter((plot) => plot.id !== excludePlotId)
+    .every((plot) => !rectsOverlapWithGap(
+      candidate.left,
+      candidate.top,
+      FARM_PLOT_SIZE,
+      FARM_PLOT_SIZE,
+      {
+        left: plot.left,
+        top: plot.top,
+        width: FARM_PLOT_SIZE,
+        height: FARM_PLOT_SIZE,
+      },
+      FARM_PLOT_SPAWN_GAP
+    ));
+}
+
 function clampFarmPlotToWorkspace(position) {
   const workspace = getWorkspaceSize();
   const maxLeft = Math.max(0, workspace.width - FARM_PLOT_SIZE);
@@ -666,30 +755,81 @@ function createFarmPlotRecord(id, preferredPosition, existingPlots) {
   const workspace = getWorkspaceSize();
   const maxLeft = Math.max(0, workspace.width - FARM_PLOT_SIZE);
   const maxTop = Math.max(0, workspace.height - FARM_PLOT_SIZE);
+  const searchOrigin = clampFarmPlotToWorkspace(preferredPosition || getCenteredStarterFarmPosition());
+  const visitedPositions = new Set();
 
-  if (preferredPosition) {
-    const clampedPreferred = clampFarmPlotToWorkspace(preferredPosition);
-    if (isFarmPlotPositionFree(clampedPreferred, existingPlots, id)) {
-      return {
-        id,
-        left: clampedPreferred.left,
-        top: clampedPreferred.top,
-      };
+  function getAvailableCandidate(position) {
+    const candidate = clampFarmPlotToWorkspace(position);
+    const key = `${candidate.left}:${candidate.top}`;
+    if (visitedPositions.has(key)) {
+      return null;
     }
+
+    visitedPositions.add(key);
+    return isFarmPlotPositionFree(candidate, existingPlots, id) ? candidate : null;
   }
 
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    const candidate = clampFarmPlotToWorkspace({
-      left: snapToGrid(Math.random() * maxLeft),
-      top: snapToGrid(Math.random() * maxTop),
-    });
+  const originCandidate = getAvailableCandidate(searchOrigin);
+  if (originCandidate) {
+    return {
+      id,
+      left: originCandidate.left,
+      top: originCandidate.top,
+    };
+  }
 
-    if (isFarmPlotPositionFree(candidate, existingPlots, id)) {
-      return {
-        id,
-        left: candidate.left,
-        top: candidate.top,
-      };
+  const maxSearchRadius = Math.max(maxLeft, maxTop) + FARM_PLOT_SIZE;
+  for (let radius = GRID_SIZE; radius <= maxSearchRadius; radius += GRID_SIZE) {
+    for (let offset = -radius; offset <= radius; offset += GRID_SIZE) {
+      const topCandidate = getAvailableCandidate({
+        left: searchOrigin.left + offset,
+        top: searchOrigin.top - radius,
+      });
+      if (topCandidate) {
+        return {
+          id,
+          left: topCandidate.left,
+          top: topCandidate.top,
+        };
+      }
+
+      const bottomCandidate = getAvailableCandidate({
+        left: searchOrigin.left + offset,
+        top: searchOrigin.top + radius,
+      });
+      if (bottomCandidate) {
+        return {
+          id,
+          left: bottomCandidate.left,
+          top: bottomCandidate.top,
+        };
+      }
+    }
+
+    for (let offset = -radius + GRID_SIZE; offset <= radius - GRID_SIZE; offset += GRID_SIZE) {
+      const leftCandidate = getAvailableCandidate({
+        left: searchOrigin.left - radius,
+        top: searchOrigin.top + offset,
+      });
+      if (leftCandidate) {
+        return {
+          id,
+          left: leftCandidate.left,
+          top: leftCandidate.top,
+        };
+      }
+
+      const rightCandidate = getAvailableCandidate({
+        left: searchOrigin.left + radius,
+        top: searchOrigin.top + offset,
+      });
+      if (rightCandidate) {
+        return {
+          id,
+          left: rightCandidate.left,
+          top: rightCandidate.top,
+        };
+      }
     }
   }
 
@@ -697,11 +837,11 @@ function createFarmPlotRecord(id, preferredPosition, existingPlots) {
   const gridRows = Math.max(1, Math.floor(maxTop / GRID_SIZE));
   for (let row = 0; row <= gridRows; row += 1) {
     for (let column = 0; column <= gridColumns; column += 1) {
-      const candidate = clampFarmPlotToWorkspace({
-        left: snapToGrid(column * GRID_SIZE),
-        top: snapToGrid(row * GRID_SIZE),
+      const candidate = getAvailableCandidate({
+        left: column * GRID_SIZE,
+        top: row * GRID_SIZE,
       });
-      if (isFarmPlotPositionFree(candidate, existingPlots, id)) {
+      if (candidate) {
         return {
           id,
           left: candidate.left,
@@ -711,14 +851,10 @@ function createFarmPlotRecord(id, preferredPosition, existingPlots) {
     }
   }
 
-  const fallbackPosition = clampFarmPlotToWorkspace({
-    left: DEFAULT_CELL_POSITIONS.farm.left,
-    top: DEFAULT_CELL_POSITIONS.farm.top,
-  });
   return {
     id,
-    left: fallbackPosition.left,
-    top: fallbackPosition.top,
+    left: searchOrigin.left,
+    top: searchOrigin.top,
   };
 }
 
@@ -732,7 +868,10 @@ function normalizeFarmPlot(plot, index, existingPlots = []) {
     left: Number.isFinite(plot.left) ? plot.left : DEFAULT_CELL_POSITIONS.farm.left + index * GRID_SIZE,
     top: Number.isFinite(plot.top) ? plot.top : DEFAULT_CELL_POSITIONS.farm.top + index * GRID_SIZE,
   };
-  const position = createFarmPlotRecord(id, preferredPosition, existingPlots);
+  const clampedPosition = clampFarmPlotToWorkspace(preferredPosition);
+  const position = isFarmPlotPositionFreeFromPlots(clampedPosition, existingPlots, id)
+    ? { id, ...clampedPosition }
+    : createFarmPlotRecord(id, clampedPosition, existingPlots);
   const stage = plot.stage === FARM_STAGE_PLANTED || plot.stage === FARM_STAGE_GROWING || plot.stage === FARM_STAGE_MATURE
     ? plot.stage
     : FARM_STAGE_EMPTY;
@@ -860,7 +999,9 @@ export function showCell(key) {
     return false;
   }
 
-  const spawnPosition = getCenteredSpawnPosition(key);
+  const spawnPosition = hasStoredCellPosition(key)
+    ? clampCellPositionToWorkspace(key, state.cells[key])
+    : getCenteredSpawnPosition(key);
   state.cells[key].left = spawnPosition.left;
   state.cells[key].top = spawnPosition.top;
   saveCellPosition(key, state.cells[key]);
@@ -922,10 +1063,47 @@ function getCenteredSpawnPosition(key) {
 }
 
 export function moveCell(key, left, top) {
-  state.cells[key].left = left;
-  state.cells[key].top = top;
+  const position = clampCellPositionToWorkspace(key, { left, top });
+  state.cells[key].left = position.left;
+  state.cells[key].top = position.top;
   saveCellPosition(key, state.cells[key]);
   notify();
+}
+
+export function stabilizeLayoutPositions({ shouldNotify = true } = {}) {
+  let didChange = false;
+
+  for (const key of LAYOUT_CELL_KEYS) {
+    const currentPosition = state.cells[key];
+    if (!currentPosition) {
+      continue;
+    }
+
+    const nextPosition = clampCellPositionToWorkspace(key, currentPosition);
+    if (nextPosition.left !== currentPosition.left || nextPosition.top !== currentPosition.top) {
+      state.cells[key] = nextPosition;
+      saveCellPosition(key, nextPosition);
+      didChange = true;
+    }
+  }
+
+  for (const plot of state.farm.plots) {
+    const nextPosition = clampFarmPlotToWorkspace(plot);
+    if (nextPosition.left !== plot.left || nextPosition.top !== plot.top) {
+      plot.left = nextPosition.left;
+      plot.top = nextPosition.top;
+      didChange = true;
+    }
+  }
+
+  if (didChange) {
+    saveFarmPlots(state.farm.plots);
+    if (shouldNotify) {
+      notify();
+    }
+  }
+
+  return didChange;
 }
 
 export function applyStarterLayout(force = false) {
@@ -1274,6 +1452,28 @@ function consumeAnimalPenFood(pen, requirement) {
       delete pen.food[productId];
     }
   }
+}
+
+function topUpChickenCoopFood(pen, requirement) {
+  if (!state.buildings.chickenCoop || !pen) {
+    return false;
+  }
+
+  let changed = false;
+  for (const [productId, quantity] of Object.entries(requirement)) {
+    const storedQuantity = getAnimalPenFoodQuantity(pen, productId);
+    const missingQuantity = Math.max(0, quantity - storedQuantity);
+    const transferQuantity = Math.min(missingQuantity, getBarnItemQuantity(productId));
+    if (transferQuantity <= 0) {
+      continue;
+    }
+
+    consumeBarnItemSilently(productId, transferQuantity);
+    pen.food[productId] = storedQuantity + transferQuantity;
+    changed = true;
+  }
+
+  return changed;
 }
 
 function hasActiveAnimalPenCycles() {
@@ -1924,6 +2124,70 @@ export function addAnimalFoodToPen(productId, quantity = 1) {
   return true;
 }
 
+export function addChickenFoodToCoop(productId, quantity = 1) {
+  const product = getProduct(productId);
+  if (!product || product.id !== "cornCrop") {
+    state.message = "Only corn goes here.";
+    notify();
+    return false;
+  }
+
+  if (!state.buildings.chickenCoop) {
+    state.message = "Build a chicken coop first.";
+    notify();
+    return false;
+  }
+
+  if (!consumeBarnItemSilently(productId, quantity)) {
+    state.message = `No ${product.inventoryName} left.`;
+    notify();
+    return false;
+  }
+
+  state.chickenCoop.food[productId] = (state.chickenCoop.food[productId] || 0) + quantity;
+  saveChickenCoopState(state.chickenCoop);
+  advanceAnimalPenProduction({ shouldNotify: false });
+  state.message = "Chicken food added.";
+  notify();
+  return true;
+}
+
+export function removeChickenFoodFromCoop(productId, quantity = 1) {
+  const product = getProduct(productId);
+  if (!product || product.id !== "cornCrop") {
+    state.message = "Only corn goes here.";
+    notify();
+    return false;
+  }
+
+  if (!state.buildings.chickenCoop) {
+    state.message = "Build a chicken coop first.";
+    notify();
+    return false;
+  }
+
+  const currentQuantity = state.chickenCoop.food[productId] || 0;
+  if (currentQuantity < quantity) {
+    state.message = "No chicken food to remove.";
+    notify();
+    return false;
+  }
+
+  const nextQuantity = currentQuantity - quantity;
+  if (nextQuantity > 0) {
+    state.chickenCoop.food[productId] = nextQuantity;
+  } else {
+    delete state.chickenCoop.food[productId];
+  }
+
+  grantBarnItemSilently(productId, quantity);
+  saveChickenCoopState(state.chickenCoop);
+  advanceAnimalPenProduction({ shouldNotify: false, shouldAutoFeed: false });
+  state.message = "Chicken food removed.";
+  notify();
+  return true;
+}
+
 export function canBuildBakery() {
   return getBarnItemQuantity("wood") >= BAKERY_WOOD_COST && getBarnItemQuantity("nails") >= BAKERY_NAIL_COST;
 }
@@ -1995,6 +2259,17 @@ export function getSellTotal() {
   }, 0);
 }
 
+export function getShoppingListTotal() {
+  return Object.entries(state.shopping.items).reduce((total, [productId, quantity]) => {
+    const product = getProduct(productId);
+    if (!product) {
+      return total;
+    }
+
+    return total + getProductBuyPrice(product) * Math.max(0, Number(quantity) || 0);
+  }, 0);
+}
+
 export function addSellItem(productId, quantity = 1) {
   if (!isProductSellable(productId)) {
     state.message = "Only crops and products can be sold.";
@@ -2011,6 +2286,19 @@ export function addSellItem(productId, quantity = 1) {
 
   const currentQuantity = getSellItemQuantity(productId);
   const nextQuantity = Math.min(ownedQuantity, currentQuantity + quantity);
+  const addedQuantity = nextQuantity - currentQuantity;
+  if (addedQuantity <= 0) {
+    state.message = "None available.";
+    notify();
+    return false;
+  }
+
+  if (!consumeBarnItemSilently(productId, addedQuantity)) {
+    state.message = "None available.";
+    notify();
+    return false;
+  }
+
   state.sell.items[productId] = nextQuantity;
   state.message = "Added to sell list.";
   notify();
@@ -2025,6 +2313,16 @@ export function adjustSellItem(productId, delta) {
 
   const ownedQuantity = getBarnItemQuantity(productId);
   const nextQuantity = Math.max(0, Math.min(ownedQuantity, currentQuantity + delta));
+  const change = nextQuantity - currentQuantity;
+  if (change > 0) {
+    if (!consumeBarnItemSilently(productId, change)) {
+      return false;
+    }
+  } else if (change < 0) {
+    grantBarnItemSilently(productId, Math.abs(change));
+    autoFeedAnimalPens({ shouldNotify: false });
+  }
+
   if (nextQuantity > 0) {
     state.sell.items[productId] = nextQuantity;
   } else {
@@ -2035,10 +2333,13 @@ export function adjustSellItem(productId, delta) {
 }
 
 export function removeSellItem(productId) {
-  if (!state.sell.items[productId]) {
+  const quantity = state.sell.items[productId];
+  if (!quantity) {
     return false;
   }
 
+  grantBarnItemSilently(productId, quantity);
+  autoFeedAnimalPens({ shouldNotify: false });
   delete state.sell.items[productId];
   state.message = "Removed.";
   notify();
@@ -2055,14 +2356,7 @@ export function sellQueuedItems() {
 
   let total = 0;
   for (const { product, quantity } of entries) {
-    const ownedQuantity = getBarnItemQuantity(product.id);
-    const sellQuantity = Math.min(quantity, ownedQuantity);
-    if (sellQuantity <= 0) {
-      continue;
-    }
-
-    consumeBarnItemSilently(product.id, sellQuantity);
-    total += getProductSellPrice(product.id) * sellQuantity;
+    total += getProductSellPrice(product.id) * quantity;
   }
 
   state.sell.items = {};
@@ -2272,8 +2566,9 @@ export function moveFarmPlot(plotId, left, top) {
     return false;
   }
 
-  plot.left = left;
-  plot.top = top;
+  const position = clampFarmPlotToWorkspace({ left, top });
+  plot.left = position.left;
+  plot.top = position.top;
   saveFarmPlots(state.farm.plots);
   notify();
   return true;
@@ -2393,7 +2688,7 @@ export function deleteCellByKey(key) {
 
 export function restartFarm() {
   state.coins = STARTING_COINS;
-  state.cells.farm = { left: 48, top: 48 };
+  state.cells.farm = getCenteredStarterFarmPosition();
   const starterLayout = getStarterLayoutPositions();
   state.cells.market = starterLayout.market;
   state.cells.sellMarket = starterLayout.sellMarket;
