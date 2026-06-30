@@ -4,6 +4,7 @@ import { attachSeedInfoTooltip } from "./seedInfoTooltip.js";
 import { CROP_ITEMS } from "./seeds.js";
 import { addProductToSellStand } from "./sell.js";
 import { getAnimalPenDropTargetFromPoint } from "./animalPen.js";
+import { getBeehiveDropTargetFromPoint } from "./beehive.js";
 import { getChickenCoopDropTargetFromPoint } from "./chickenCoop.js";
 import {
   addAnimalFoodToPen,
@@ -14,12 +15,14 @@ import {
   buildAnimalFeeder,
   buildAnimalPen,
   buildBakery,
+  buildBeehive,
   buildChickenCoop,
   buildMill,
   buyLandPlot,
   canBuildAnimalFeeder,
   canBuildAnimalPen,
   canBuildBakery,
+  canBuildBeehive,
   canBuildChickenCoop,
   canBuildMill,
   adjustSellItem,
@@ -34,11 +37,12 @@ import {
   purchaseShoppingList,
   removeShoppingItem,
   removeSellItem,
+  restartFarm,
   sellQueuedItems,
   setShoppingItemQuantity,
   state,
 } from "./state.js";
-import { getInventoryEntries } from "./inventory.js";
+import { getInventoryEntries, handleInventorySelection, isSelectedInventoryItem } from "./inventory.js";
 import { renderEmpty, renderSection } from "./pageShared.js";
 
 const BARN_DRAG_THRESHOLD = 4;
@@ -58,6 +62,7 @@ const BUILD_ICONS = {
   mill: "⚙",
   chickenCoop: "🐔",
   animalPen: "🐄",
+  beehive: "🐝",
   animalFeeder: "🪣",
   farmPlot1x1: "▦",
   farmPlot2x1: "▭",
@@ -219,15 +224,27 @@ function getShopDropText(product) {
     if (!output) {
       return "—";
     }
-    const amount = Number.isFinite(output.productionYieldMax)
-      ? output.productionYieldMax
-      : Number.isFinite(output.productionYieldMin)
-        ? output.productionYieldMin
-        : 1;
-    return `${amount} ${output.marketName}`;
+    return getProductionDropText(output);
   }
 
   return "—";
+}
+
+function getProductionDropText(product) {
+  const drops = [];
+  const min = Number.isFinite(product?.productionYieldMin) ? product.productionYieldMin : 1;
+  const max = Number.isFinite(product?.productionYieldMax) ? product.productionYieldMax : min;
+  const amount = max > min ? `${min}-${max}` : `${max}`;
+  drops.push(`${amount} ${product?.marketName || "Product"}`);
+
+  if (product?.productionDrops && typeof product.productionDrops === "object") {
+    for (const [productId, quantity] of Object.entries(product.productionDrops)) {
+      const dropProduct = getProduct(productId);
+      drops.push(`${quantity} ${dropProduct?.marketName || "Item"}`);
+    }
+  }
+
+  return drops.join(", ");
 }
 
 function getCropDropText(crop) {
@@ -236,7 +253,17 @@ function getCropDropText(crop) {
   }
 
   const drops = [];
-  const amount = Number.isFinite(crop.harvestYield) ? crop.harvestYield : 1;
+  const min = Number.isFinite(crop.harvestYieldMin)
+    ? crop.harvestYieldMin
+    : Number.isFinite(crop.harvestYield)
+      ? crop.harvestYield
+      : 1;
+  const max = Number.isFinite(crop.harvestYieldMax)
+    ? crop.harvestYieldMax
+    : Number.isFinite(crop.harvestYield)
+      ? crop.harvestYield
+      : min;
+  const amount = max > min ? `${min}-${max}` : `${min}`;
   drops.push(`${amount} ${crop.marketName}`);
 
   if (crop.harvestDrops && typeof crop.harvestDrops === "object") {
@@ -323,6 +350,127 @@ function getShoppingEntries() {
     .sort((first, second) => sortProductsByBuyPrice(first.product, second.product));
 }
 
+function getProductValue(product) {
+  return getProductSellPrice(product?.id) || getProductBuyPrice(product) || 0;
+}
+
+function getFarmOverviewStats() {
+  const plots = Array.isArray(state.farm?.plots) ? state.farm.plots : [];
+  const tiles = plots.flatMap((plot) => Array.isArray(plot.tiles) ? plot.tiles : []);
+  const plantedTiles = tiles.filter((tile) => tile.cropId);
+  return {
+    plots: plots.length,
+    tiles: tiles.length,
+    planted: plantedTiles.length,
+    ready: tiles.filter((tile) => tile.stage === "mature").length,
+    trees: plots.filter((plot) => plot.kind === "tree").length,
+    phase: document.body.classList.contains("is-night") ? "Night" : "Day",
+  };
+}
+
+function getInventoryOverviewStats(entries) {
+  const totalQuantity = entries.reduce((total, entry) => total + entry.quantity, 0);
+  const seedQuantity = entries
+    .filter((entry) => entry.product.category === "seeds")
+    .reduce((total, entry) => total + entry.quantity, 0);
+  const cropQuantity = entries
+    .filter((entry) => entry.product.category === "crops")
+    .reduce((total, entry) => total + entry.quantity, 0);
+  const mostValuable = entries.reduce((best, entry) => {
+    const value = getProductValue(entry.product) * entry.quantity;
+    return !best || value > best.value ? { ...entry, value } : best;
+  }, null);
+
+  return {
+    stacks: entries.length,
+    quantity: totalQuantity,
+    seeds: seedQuantity,
+    crops: cropQuantity,
+    topStack: mostValuable ? `${getDisplayName(mostValuable.product)} x${mostValuable.quantity}` : "None",
+  };
+}
+
+function getAnimalPenEntries() {
+  return [
+    { key: "animalPen", label: "Animal Pen", pen: state.animalPen, built: isBuildingBuilt("animalPen") },
+    { key: "chickenCoop", label: "Chicken Coop", pen: state.chickenCoop, built: isBuildingBuilt("chickenCoop") },
+    { key: "beehive", label: "Beehive", pen: state.beehive, built: isBuildingBuilt("beehive") },
+  ];
+}
+
+function getAnimalOverviewStats() {
+  const pens = getAnimalPenEntries();
+  const animals = pens.flatMap((entry) => Array.isArray(entry.pen?.animals) ? entry.pen.animals : []);
+  const producing = animals.filter((animal) => Number.isFinite(animal.readyAt)).length;
+  const waiting = animals.length - producing;
+  return {
+    animals: animals.length,
+    producing,
+    waiting,
+    corn: getBarnItemQuantity("cornCrop") + (state.animalPen?.food?.cornCrop || 0) + (state.chickenCoop?.food?.cornCrop || 0),
+    straw: getBarnItemQuantity("strawCrop") + (state.animalPen?.food?.strawCrop || 0),
+  };
+}
+
+function getProductionOverviewStats() {
+  const builtBuildings = ["mill", "bakery", "animalFeeder", "animalPen", "chickenCoop", "beehive"]
+    .filter((key) => isBuildingBuilt(key)).length;
+  const bakeryQueue = Array.isArray(state.bakery?.queue) ? state.bakery.queue.length : 0;
+  const animalJobs = getAnimalPenEntries()
+    .flatMap((entry) => Array.isArray(entry.pen?.animals) ? entry.pen.animals : [])
+    .filter((animal) => Number.isFinite(animal.readyAt));
+  const nextReadyAt = [
+    ...animalJobs.map((animal) => animal.readyAt),
+    ...(Array.isArray(state.bakery?.queue) ? state.bakery.queue.map((order) => order.readyAt) : []),
+  ].filter(Number.isFinite).sort((first, second) => first - second)[0];
+
+  return {
+    buildings: builtBuildings,
+    bakeryQueue,
+    animalJobs: animalJobs.length,
+    next: Number.isFinite(nextReadyAt) ? formatDuration(Math.max(0, nextReadyAt - Date.now())) : "None",
+  };
+}
+
+function getOverviewAlerts({ farm, inventory, animals, economy }) {
+  const alerts = [];
+  if (farm.ready > 0) {
+    alerts.push(`${farm.ready} crop${farm.ready === 1 ? "" : "s"} ready`);
+  }
+  if (animals.waiting > 0) {
+    alerts.push(`${animals.waiting} animal${animals.waiting === 1 ? "" : "s"} waiting`);
+  }
+  if (economy.sellTotal > 0) {
+    alerts.push(`${economy.sellTotal} coins queued in market`);
+  }
+  if (economy.basketTotal > state.coins) {
+    alerts.push(`Basket needs ${economy.basketTotal - state.coins} more coins`);
+  }
+  if (inventory.crops > 0 && economy.sellTotal === 0) {
+    alerts.push(`${inventory.crops} crops in barn`);
+  }
+  return alerts.length > 0 ? alerts.slice(0, 4) : ["Farm is quiet"];
+}
+
+function renderOverviewCard(title, icon, rows) {
+  return `
+    <section class="dashboard-card dashboard-overview-stat-card">
+      <div class="dashboard-card__title-row">
+        <span class="dashboard-card__icon" aria-hidden="true">${icon}</span>
+        <span class="dashboard-card__title">${title}</span>
+      </div>
+      <div class="dashboard-overview-stat-list">
+        ${rows.map((row) => `
+          <div class="dashboard-overview-stat-row">
+            <span>${row.label}</span>
+            <strong>${row.value}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function getBarnSellDropTargetFromPoint(x, y) {
   const element = document.elementFromPoint(x, y);
   return element?.closest?.("[data-barn-sell-drop]") || null;
@@ -382,15 +530,23 @@ function renderBarnSection(section) {
         ${renderDashboardTableHeader(["Item", "Qty", "Sell"], "dashboard-table-header--barn")}
         <div class="dashboard-table-list">
           ${sortBarnEntriesForView(entries)
-            .map(({ product, quantity }) => renderDashboardTableRow({
-              product,
-              quantity: `x${quantity}`,
-              columns: [getProductSellPrice(product.id) > 0 ? `${getProductSellPrice(product.id)}` : "—"],
-              buttonAttribute: isBarnDraggableProduct(product) ? `data-barn-drag-product="${product.id}"` : "",
-              className: isBarnDraggableProduct(product) ? "dashboard-table-row--draggable" : "",
-              variant: "barn",
-              rowClass: `item-category-${product.category || "other"}`,
-            }))
+            .map(({ product, quantity }) => {
+              const isSeed = product.category === "seeds";
+              const isDraggable = isBarnDraggableProduct(product);
+              return renderDashboardTableRow({
+                product,
+                quantity: `x${quantity}`,
+                columns: [getProductSellPrice(product.id) > 0 ? `${getProductSellPrice(product.id)}` : "—"],
+                buttonAttribute: isSeed
+                  ? `data-barn-select-product="${product.id}"`
+                  : isDraggable
+                    ? `data-barn-drag-product="${product.id}"`
+                    : "",
+                className: isDraggable ? "dashboard-table-row--draggable" : "",
+                variant: "barn",
+                rowClass: `item-category-${product.category || "other"} ${isSelectedInventoryItem(product.id) ? "is-selected" : ""}`,
+              });
+            })
             .join("")}
         </div>
       </div>
@@ -698,10 +854,17 @@ function getBuildSections() {
         },
         {
           id: "animalPen",
-          label: "Cow Pen",
+          label: "Animal Pen",
           built: isBuildingBuilt("animalPen"),
           canBuild: canBuildAnimalPen(),
           cost: `Wood ${wood}/55`,
+        },
+        {
+          id: "beehive",
+          label: "Beehive",
+          built: isBuildingBuilt("beehive"),
+          canBuild: canBuildBeehive(),
+          cost: `Wood ${wood}/25`,
         },
         {
           id: "animalFeeder",
@@ -778,34 +941,80 @@ function renderBuildPanel() {
 }
 
 function renderDashboardOverview() {
-  const inventoryCount = getInventoryEntries().length;
-  const shoppingCount = getShoppingEntries().length;
-  const sellCount = getSellEntries().length;
-  const builtCount = ["mill", "bakery", "animalFeeder", "animalPen", "chickenCoop"].filter((key) => isBuildingBuilt(key)).length;
-
-  const cards = [
-    { key: "barn", label: "Barn", icon: "📦", meta: `${inventoryCount} items`, detail: "Inventory and drops" },
-    { key: "shop", label: "Shop", icon: "🛒", meta: `${shoppingCount} in basket`, detail: "Buy items and seeds" },
-    { key: "market", label: "Market", icon: "⚖", meta: `${sellCount} queued`, detail: "Sell crops and products" },
-    { key: "build", label: "Build", icon: "🔨", meta: `${builtCount} built`, detail: "Construct and expand" },
-  ];
+  const inventoryEntries = getInventoryEntries();
+  const farm = getFarmOverviewStats();
+  const inventory = getInventoryOverviewStats(inventoryEntries);
+  const animals = getAnimalOverviewStats();
+  const production = getProductionOverviewStats();
+  const economy = {
+    coins: state.coins,
+    basketItems: getShoppingEntries().reduce((total, entry) => total + entry.quantity, 0),
+    basketTotal: getShoppingListTotal(),
+    marketItems: getSellEntries().reduce((total, entry) => total + entry.quantity, 0),
+    sellTotal: getSellTotal(),
+  };
+  const alerts = getOverviewAlerts({ farm, inventory, animals, economy });
 
   return `
-    <div class="dashboard-overview-grid">
-      ${cards
-        .map((card) => `
-          <button type="button" class="dashboard-card dashboard-overview-card" data-dashboard-section="${card.key}">
-            <span class="dashboard-card__header">
-              <span class="dashboard-card__title-row">
-                <span class="dashboard-card__icon" aria-hidden="true">${card.icon}</span>
-                <span class="dashboard-card__title">${card.label}</span>
-              </span>
-              <span class="dashboard-card__meta">${card.meta}</span>
-            </span>
-            <span class="dashboard-card__detail">${card.detail}</span>
-          </button>
-        `)
-        .join("")}
+    <div class="dashboard-overview">
+      <div class="dashboard-overview-info" aria-label="Farm status">
+        <div class="day-night-cell dashboard-day-night-cell" data-day-night-cell>
+          <span class="day-night-icon" aria-hidden="true">☀</span>
+          <span class="day-night-track" aria-hidden="true">
+            <span class="day-night-fill" data-day-night-fill></span>
+          </span>
+          <span class="day-night-icon" aria-hidden="true">☾</span>
+        </div>
+        <div class="top-money-cell dashboard-money-cell" data-top-money-cell>
+          <span class="money-coin" aria-hidden="true"></span>
+          <span class="money-value" data-top-money-value>${state.coins}</span>
+          <button type="button" class="top-money-add" data-add-coins aria-label="Add 100 coins">+</button>
+        </div>
+      </div>
+      <div class="dashboard-overview-grid">
+        ${renderOverviewCard("Farm", "▦", [
+          { label: "Plots", value: `${farm.plots}` },
+          { label: "Tiles", value: `${farm.tiles}` },
+          { label: "Planted", value: `${farm.planted}` },
+          { label: "Ready", value: `${farm.ready}` },
+          { label: "Trees", value: `${farm.trees}` },
+          { label: "Phase", value: `<span data-cycle-phase>${farm.phase}</span>` },
+        ])}
+        ${renderOverviewCard("Inventory", "📦", [
+          { label: "Stacks", value: `${inventory.stacks}` },
+          { label: "Items", value: `${inventory.quantity}` },
+          { label: "Seeds", value: `${inventory.seeds}` },
+          { label: "Crops", value: `${inventory.crops}` },
+          { label: "Top stack", value: inventory.topStack },
+        ])}
+        ${renderOverviewCard("Animals", "🐄", [
+          { label: "Animals", value: `${animals.animals}` },
+          { label: "Producing", value: `${animals.producing}` },
+          { label: "Waiting", value: `${animals.waiting}` },
+          { label: "Corn food", value: `${animals.corn}` },
+          { label: "Straw food", value: `${animals.straw}` },
+        ])}
+        ${renderOverviewCard("Production", "⚙", [
+          { label: "Buildings", value: `${production.buildings}` },
+          { label: "Bakery queue", value: `${production.bakeryQueue}` },
+          { label: "Animal jobs", value: `${production.animalJobs}` },
+          { label: "Next ready", value: production.next },
+        ])}
+        ${renderOverviewCard("Economy", "◉", [
+          { label: "Coins", value: `${economy.coins}` },
+          { label: "Basket items", value: `${economy.basketItems}` },
+          { label: "Basket total", value: `${economy.basketTotal}` },
+          { label: "Market items", value: `${economy.marketItems}` },
+          { label: "Market value", value: `${economy.sellTotal}` },
+        ])}
+        ${renderOverviewCard("Alerts", "!", alerts.map((alert, index) => ({
+          label: index === 0 ? "Now" : "Also",
+          value: alert,
+        })))}
+      </div>
+      <div class="dashboard-overview-footer">
+        <button type="button" class="page-action dashboard-restart-button" data-dashboard-restart>Restart farm</button>
+      </div>
     </div>
   `;
 }
@@ -857,7 +1066,7 @@ function renderBarnItemContextMenu() {
   }
 
   const animalTargetLabel = product.category === "animals"
-    ? product.penBuildingId === "chickenCoop" ? "Chicken Coop" : "Cow Pen"
+    ? product.penBuildingId === "chickenCoop" ? "Chicken Coop" : product.penBuildingId === "beehive" ? "Beehive" : "Animal Pen"
     : "";
   const canSendToMarket = isBarnSellableProduct(product);
   if (!animalTargetLabel && !canSendToMarket) {
@@ -992,6 +1201,31 @@ function renderActivePanel(panelRoot, contentRoot, titleRoot, tabRoot) {
   }
 }
 
+export function openDashboardSection(sectionKey = "overview") {
+  const tabRoot = document.querySelector("[data-side-tabs]");
+  const panelRoot = document.querySelector("[data-side-panel]");
+  const contentRoot = document.querySelector("[data-side-panel-content]");
+  const titleRoot = document.querySelector("[data-side-panel-title]");
+  if (!tabRoot || !panelRoot || !contentRoot || !titleRoot) {
+    return false;
+  }
+
+  activePanel = "dashboard";
+  activeDashboardSection = sectionKey;
+  if (sectionKey === "barn") {
+    activeDashboardBarnSection = null;
+  }
+  if (sectionKey === "shop") {
+    activeDashboardShopSection = null;
+  }
+  if (sectionKey === "build") {
+    activeDashboardBuildSection = null;
+  }
+  window.clearTimeout(switchTimer);
+  renderActivePanel(panelRoot, contentRoot, titleRoot, tabRoot);
+  return true;
+}
+
 function closePanel(panelRoot, tabRoot) {
   activePanel = null;
   window.clearTimeout(switchTimer);
@@ -1023,6 +1257,19 @@ function openPanel(panelKey, panelRoot, contentRoot, titleRoot, tabRoot) {
 }
 
 function handlePanelAction(event) {
+  const barnSelectButton = event.target.closest("[data-barn-select-product]");
+  if (barnSelectButton) {
+    handleInventorySelection(barnSelectButton.dataset.barnSelectProduct);
+    renderDashboardIfVisible();
+    return;
+  }
+
+  if (event.target.closest("[data-dashboard-restart]")) {
+    restartFarm();
+    renderDashboardIfVisible();
+    return;
+  }
+
   const contextSendButton = event.target.closest("[data-barn-context-send]");
   if (contextSendButton) {
     addProductToSellStand(contextSendButton.dataset.barnContextSend);
@@ -1207,6 +1454,7 @@ function handlePanelAction(event) {
     mill: buildMill,
     chickenCoop: buildChickenCoop,
     animalPen: buildAnimalPen,
+    beehive: buildBeehive,
     animalFeeder: buildAnimalFeeder,
   };
   actions[buildButton.dataset.buildPage]?.();
@@ -1324,6 +1572,11 @@ function dropBarnItemIntoBuilding(productId, x, y) {
 
   if (chickenCoopDropTarget === "animals") {
     return product.penBuildingId === "chickenCoop" ? addAnimalToPen(productId) : false;
+  }
+
+  const beehiveDropTarget = getBeehiveDropTargetFromPoint(x, y);
+  if (beehiveDropTarget === "animals") {
+    return product.penBuildingId === "beehive" ? addAnimalToPen(productId) : false;
   }
 
   if (getBuildingElementFromPoint(x, y, "[data-mill-cell]")) {

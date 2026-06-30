@@ -4,7 +4,7 @@ const seed = {
   icon: "🌾",
   marketName: "Wheat",
   inventoryName: "Wheat seed",
-  price: 1,
+  price: 2,
   cropProductId: "wheatCrop",
 };
 
@@ -16,8 +16,8 @@ const crop = {
   inventoryName: "Wheat",
   price: 0,
   sellPrice: 2,
-  growDurationMs: 8000,
-  harvestYield: 1,
+  growDurationMs: 25000,
+  harvestYield: 3,
   harvestDrops: {
     strawCrop: 1,
   },

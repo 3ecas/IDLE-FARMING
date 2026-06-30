@@ -4,7 +4,7 @@ const seed = {
   icon: "🥔",
   marketName: "Potato",
   inventoryName: "Potato seed",
-  price: 3,
+  price: 9,
   cropProductId: "potatoCrop",
 };
 
@@ -15,9 +15,9 @@ const crop = {
   marketName: "Potato",
   inventoryName: "Potato",
   price: 0,
-  sellPrice: 3,
-  growDurationMs: 120000,
-  harvestYield: 3,
+  sellPrice: 4,
+  growDurationMs: 150000,
+  harvestYield: 5,
 };
 
 export const potato = {

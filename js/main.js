@@ -1,8 +1,10 @@
 import { mountAnimalPen } from "./animalPen.js";
 import { mountAnimalFeeder } from "./animalFeeder.js";
+import { mountAnimalWanderers } from "./animalWanderers.js";
 import { mountBarn } from "./barn.js";
 import { mountBuild } from "./build.js";
 import { mountBakery } from "./bakery.js";
+import { mountBeehive } from "./beehive.js";
 import { mountChickenCoop } from "./chickenCoop.js";
 import { mountFastItems } from "./fastItems.js";
 import { mountMarket } from "./market.js";
@@ -18,6 +20,7 @@ import { clearSelectedInventoryItem } from "./inventory.js";
 import { isCellHidden, onStateChange, restartFarm, showCell, stabilizeLayoutPositions, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
+const workspace = document.getElementById("workspace");
 const cellMount = document.getElementById("cell-mount");
 const marketMount = document.getElementById("market-mount");
 const sellMarketMount = document.getElementById("sell-market-mount");
@@ -31,6 +34,7 @@ const bakeryMount = document.getElementById("bakery-mount");
 const animalFeederMount = document.getElementById("animal-feeder-mount");
 const animalPenMount = document.getElementById("animal-pen-mount");
 const chickenCoopMount = document.getElementById("chicken-coop-mount");
+const beehiveMount = document.getElementById("beehive-mount");
 const menuMount = document.getElementById("menu-mount");
 const restartButton = document.querySelector("[data-restart-farm]");
 
@@ -52,7 +56,9 @@ mountBakery(bakeryMount);
 mountAnimalFeeder(animalFeederMount);
 mountAnimalPen(animalPenMount);
 mountChickenCoop(chickenCoopMount);
+mountBeehive(beehiveMount);
 mountMenu(menuMount);
+mountAnimalWanderers(workspace);
 mountFarmCursors();
 onStateChange(renderStatus);
 renderStatus();

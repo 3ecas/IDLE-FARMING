@@ -1,5 +1,5 @@
 import { deleteCellByKey, moveCell, moveFarmPlot, state } from "./state.js";
-import { getSceneScale, screenDeltaToWorld } from "./sceneCamera.js";
+import { getSceneScale, screenDeltaToWorld } from "./sceneCamera.js?v=3";
 
 const GRID_SIZE = 24;
 const DRAG_THRESHOLD = 4;
@@ -222,7 +222,7 @@ function endDrag() {
   return snapshot;
 }
 
-export function mountMovableCell(container, { key, selector, dragHandle = null, onDrop }) {
+export function mountMovableCell(container, { key, selector, dragHandle = null, canDrag = null, onDrop }) {
   container.addEventListener("pointerdown", (event) => {
     const cell = event.target.closest(selector);
     if (!cell || event.button !== 0) {
@@ -240,6 +240,10 @@ export function mountMovableCell(container, { key, selector, dragHandle = null, 
       if (!handle || !cell.contains(handle)) {
         return;
       }
+    }
+
+    if (typeof canDrag === "function" && !canDrag(cell, event)) {
+      return;
     }
 
     const workspace = container.closest(".workspace");

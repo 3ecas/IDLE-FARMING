@@ -1,13 +1,12 @@
 import {
-  getAnimalFeederSlots,
   getCellDragBounds,
   isBuildingBuilt,
   moveCell,
   onStateChange,
   state,
-  toggleAnimalFeederTarget,
 } from "./state.js";
-import { mountMovableCell } from "./drag.js";
+import { mountMovableCell, wasRecentlyDragged } from "./drag.js";
+import { getAnimalFeederSummary, openAnimalBuildingWindow } from "./animalBuildingWindow.js";
 
 function clampToWorkspace(workspace, left, top) {
   const bounds = getCellDragBounds("animalFeeder");
@@ -32,13 +31,12 @@ export function mountAnimalFeeder(container) {
   });
 
   container.addEventListener("click", (event) => {
-    const toggleButton = event.target.closest("[data-animal-feeder-target]");
-    if (!toggleButton) {
+    const cell = event.target.closest("[data-animal-feeder-cell]");
+    if (!cell || wasRecentlyDragged("animalFeeder")) {
       return;
     }
 
-    event.preventDefault();
-    toggleAnimalFeederTarget(toggleButton.dataset.animalFeederTarget);
+    openAnimalBuildingWindow("animalFeeder");
   });
 
   function render() {
@@ -52,27 +50,19 @@ export function mountAnimalFeeder(container) {
       state.cells.animalFeeder.left,
       state.cells.animalFeeder.top
     );
-    const slots = getAnimalFeederSlots();
+    const summary = getAnimalFeederSummary();
 
     container.innerHTML = `
-      <section class="animal-feeder-cell" data-cell-key="animalFeeder" data-animal-feeder-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Animal feeder">
+      <section class="animal-feeder-cell animal-building-scene-cell" data-cell-key="animalFeeder" data-animal-feeder-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Animal feeder">
         <div class="animal-feeder-header">
           <span class="animal-feeder-title">
             <span class="animal-feeder-title__icon" aria-hidden="true">FD</span>
             <span class="animal-feeder-title__text">Animal Feeder</span>
           </span>
         </div>
-        <div class="animal-feeder-body">
-          ${slots
-            .map(
-              (slot) => `
-                <button type="button" class="animal-feeder-slot ${slot.enabled ? "is-selected" : ""}" data-animal-feeder-target="${slot.id}" aria-pressed="${slot.enabled ? "true" : "false"}">
-                  <span class="animal-feeder-slot__name">${slot.label}</span>
-                  <span class="animal-feeder-slot__status">${slot.enabled ? slot.status : "Disabled"}</span>
-                </button>
-              `
-            )
-            .join("")}
+        <div class="animal-building-scene-summary">
+          <span>Auto targets x${summary.enabledCount}</span>
+          <span>${summary.status}</span>
         </div>
       </section>
     `;

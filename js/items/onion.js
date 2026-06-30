@@ -4,7 +4,7 @@ const seed = {
   icon: "🧅",
   marketName: "Onion",
   inventoryName: "Onion seed",
-  price: 3,
+  price: 7,
   cropProductId: "onionCrop",
 };
 
@@ -15,8 +15,8 @@ const crop = {
   marketName: "Onion",
   inventoryName: "Onion",
   price: 0,
-  sellPrice: 1,
-  growDurationMs: 82000,
+  sellPrice: 6,
+  growDurationMs: 105000,
   harvestYield: 3,
 };
 

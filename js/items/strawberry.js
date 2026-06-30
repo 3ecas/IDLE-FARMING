@@ -4,7 +4,7 @@ const seed = {
   icon: "🍓",
   marketName: "Strawberry",
   inventoryName: "Strawberry seed",
-  price: 2,
+  price: 4,
   cropProductId: "strawberryCrop",
 };
 
@@ -15,9 +15,9 @@ const crop = {
   marketName: "Strawberry",
   inventoryName: "Strawberry",
   price: 0,
-  sellPrice: 3,
-  growDurationMs: 34000,
-  harvestYield: 1,
+  sellPrice: 5,
+  growDurationMs: 55000,
+  harvestYield: 2,
 };
 
 export const strawberry = {

@@ -2,11 +2,13 @@ import {
   buildBakery,
   buildAnimalFeeder,
   buildAnimalPen,
+  buildBeehive,
   buildChickenCoop,
   buildMill,
   canBuildBakery,
   canBuildAnimalFeeder,
   canBuildAnimalPen,
+  canBuildBeehive,
   canBuildChickenCoop,
   canBuildMill,
   getBarnItemQuantity,
@@ -99,6 +101,13 @@ export function mountBuild(container) {
     if (chickenCoopButton) {
       event.preventDefault();
       buildChickenCoop();
+      return;
+    }
+
+    const beehiveButton = event.target.closest("[data-build-beehive]");
+    if (beehiveButton) {
+      event.preventDefault();
+      buildBeehive();
     }
   });
 
@@ -118,13 +127,15 @@ export function mountBuild(container) {
     const animalFeederBuilt = isBuildingBuilt("animalFeeder");
     const animalPenBuilt = isBuildingBuilt("animalPen");
     const chickenCoopBuilt = isBuildingBuilt("chickenCoop");
+    const beehiveBuilt = isBuildingBuilt("beehive");
     const wood = getBarnItemQuantity("wood");
     const nails = getBarnItemQuantity("nails");
     const millLabel = millBuilt ? "Already Built" : "Mill";
     const bakeryLabel = bakeryBuilt ? "Already Built" : "Bakery";
     const animalFeederLabel = animalFeederBuilt ? "Already Built" : "Animal Feeder";
-    const animalPenLabel = animalPenBuilt ? "Already Built" : "Cow Pen";
+    const animalPenLabel = animalPenBuilt ? "Already Built" : "Animal Pen";
     const chickenCoopLabel = chickenCoopBuilt ? "Already Built" : "Chicken Coop";
+    const beehiveLabel = beehiveBuilt ? "Already Built" : "Beehive";
     const buildProducts = [
       {
         label: millLabel,
@@ -165,6 +176,14 @@ export function mountBuild(container) {
         totalCost: 25,
         costLabel: `Wood ${wood}/25`,
         dataAttribute: "data-build-chicken-coop",
+      },
+      {
+        label: beehiveLabel,
+        isBuilt: beehiveBuilt,
+        canBuild: canBuildBeehive(),
+        totalCost: 25,
+        costLabel: `Wood ${wood}/25`,
+        dataAttribute: "data-build-beehive",
       },
     ].sort(sortBuildProductsByCost);
 

@@ -15,6 +15,7 @@ import { getInventoryEntries, handleInventorySelection, isSelectedInventoryItem 
 import { mountMovableCell } from "./drag.js";
 import { addProductToSellStand, getSellCellFromPoint } from "./sell.js";
 import { getAnimalPenDropTargetFromPoint } from "./animalPen.js";
+import { getBeehiveDropTargetFromPoint } from "./beehive.js";
 import { getChickenCoopDropTargetFromPoint } from "./chickenCoop.js";
 import {
   getPanelCategory,
@@ -187,6 +188,11 @@ function handleSeedDragPointerUp(event) {
     if (penTarget === "animals") {
       addAnimalToPen(snapshot.productId);
     }
+  } else if (snapshot.target === "beehive") {
+    const penTarget = getBeehiveDropTargetFromPoint(event.clientX, event.clientY);
+    if (penTarget === "animals") {
+      addAnimalToPen(snapshot.productId);
+    }
   } else if (snapshot.target === "animalFood") {
     const penTarget = getAnimalPenDropTargetFromPoint(event.clientX, event.clientY);
     if (penTarget === "food") {
@@ -307,8 +313,8 @@ export function mountBarn(container) {
     if (product.category === "seeds") {
       target = "farm";
     } else if (product.category === "animals") {
-      target = product.penBuildingId === "chickenCoop" ? "chickenCoop" : "animalPen";
-    } else if (product.id === "strawCrop") {
+      target = product.penBuildingId === "chickenCoop" ? "chickenCoop" : product.penBuildingId === "beehive" ? "beehive" : "animalPen";
+    } else if (product.id === "strawCrop" || product.id === "cornCrop") {
       target = "animalFood";
     } else if (isSellableProduct(product)) {
       target = "sell";

@@ -1,6 +1,7 @@
 import { getProduct } from "./catalog.js";
 import { getCellDragBounds, isBuildingBuilt, moveCell, onProgressChange, onStateChange, state } from "./state.js";
-import { mountMovableCell } from "./drag.js";
+import { mountMovableCell, wasRecentlyDragged } from "./drag.js";
+import { getAnimalBuildingSummary, openAnimalBuildingWindow } from "./animalBuildingWindow.js";
 
 function clampToWorkspace(workspace, left, top) {
   const bounds = getCellDragBounds("animalPen");
@@ -64,16 +65,6 @@ function renderAnimalCard(animal) {
   `;
 }
 
-function renderFoodSlot() {
-  const strawCount = state.animalPen.food.strawCrop || 0;
-  return `
-    <div class="animal-pen-food" data-animal-pen-food-drop>
-      <div class="animal-pen-food__label">Food</div>
-      <div class="animal-pen-food__value">Straw x${strawCount}</div>
-    </div>
-  `;
-}
-
 export function getAnimalPenDropTargetFromPoint(x, y) {
   if (!isBuildingBuilt("animalPen")) {
     return null;
@@ -88,7 +79,7 @@ export function getAnimalPenDropTargetFromPoint(x, y) {
     return "food";
   }
 
-  if (element.closest?.("[data-animal-pen-cell]")) {
+  if (element.closest?.("[data-animal-pen-cell], [data-animal-pen-animal-drop]")) {
     return "animals";
   }
 
@@ -106,6 +97,15 @@ export function mountAnimalPen(container) {
     },
   });
 
+  container.addEventListener("click", (event) => {
+    const cell = event.target.closest("[data-animal-pen-cell]");
+    if (!cell || wasRecentlyDragged("animalPen")) {
+      return;
+    }
+
+    openAnimalBuildingWindow("animalPen");
+  });
+
   function render() {
     if (!isBuildingBuilt("animalPen")) {
       container.innerHTML = "";
@@ -118,25 +118,19 @@ export function mountAnimalPen(container) {
       state.cells.animalPen.top
     );
 
-    const animals = state.animalPen.animals;
+    const summary = getAnimalBuildingSummary("animalPen");
 
     container.innerHTML = `
-      <section class="animal-pen-cell" data-cell-key="animalPen" data-animal-pen-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Cow pen">
+      <section class="animal-pen-cell animal-building-scene-cell" data-cell-key="animalPen" data-animal-pen-cell style="left:${position.left}px; top:${position.top}px;" aria-label="Animal pen">
         <div class="animal-pen-header">
           <span class="animal-pen-title">
             <span class="animal-pen-title__icon" aria-hidden="true">🐄</span>
-            <span class="animal-pen-title__text">Cow Pen</span>
+            <span class="animal-pen-title__text">Animal Pen</span>
           </span>
         </div>
-        <div class="animal-pen-body">
-          ${renderFoodSlot()}
-          <div class="animal-pen-list">
-            ${
-              animals.length > 0
-                ? animals.map((animal) => renderAnimalCard(animal)).join("")
-                : `<div class="animal-pen-empty">Drop a cow here</div>`
-            }
-          </div>
+        <div class="animal-building-scene-summary">
+          <span>Animals x${summary.animalCount}</span>
+          <span>${summary.status}</span>
         </div>
       </section>
     `;

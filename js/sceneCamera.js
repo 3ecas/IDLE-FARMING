@@ -1,10 +1,11 @@
-import { onStateChange } from "./state.js";
+import { getFarmPlotSize, onStateChange, state } from "./state.js";
 
 const CAMERA_STORAGE_KEY = "idle-farm-scene-camera-v1";
-const PLAYFIELD_SIZE = 3840;
-const SCENE_MARGIN = 720;
-const BASE_SCENE_WIDTH = PLAYFIELD_SIZE + SCENE_MARGIN * 2;
-const BASE_SCENE_HEIGHT = PLAYFIELD_SIZE + SCENE_MARGIN * 2;
+const PLAYFIELD_WIDTH = 3072;
+const PLAYFIELD_HEIGHT = 1728;
+const SCENE_MARGIN = 480;
+const BASE_SCENE_WIDTH = PLAYFIELD_WIDTH + SCENE_MARGIN * 2;
+const BASE_SCENE_HEIGHT = PLAYFIELD_HEIGHT + SCENE_MARGIN * 2;
 
 let camera = readCamera();
 let sceneSize = { width: BASE_SCENE_WIDTH, height: BASE_SCENE_HEIGHT };
@@ -60,11 +61,13 @@ function updateSceneSize() {
 
 function clampCameraToBounds() {
   const viewport = getViewportSize();
-  const minX = viewport.width - sceneSize.width;
-  const minY = viewport.height - sceneSize.height;
+  const maxX = viewport.width / 2 - SCENE_MARGIN;
+  const maxY = viewport.height / 2 - SCENE_MARGIN;
+  const minX = viewport.width / 2 - SCENE_MARGIN - PLAYFIELD_WIDTH;
+  const minY = viewport.height / 2 - SCENE_MARGIN - PLAYFIELD_HEIGHT;
 
-  camera.x = Math.min(0, Math.max(minX, camera.x));
-  camera.y = Math.min(0, Math.max(minY, camera.y));
+  camera.x = Math.min(maxX, Math.max(minX, camera.x));
+  camera.y = Math.min(maxY, Math.max(minY, camera.y));
 }
 
 function applyCamera({ shouldSave = true } = {}) {
@@ -74,9 +77,10 @@ function applyCamera({ shouldSave = true } = {}) {
 
   camera.x = Math.round(camera.x);
   camera.y = Math.round(camera.y);
-  workspaceElement.style.setProperty("--scene-width", `${PLAYFIELD_SIZE}px`);
-  workspaceElement.style.setProperty("--scene-height", `${PLAYFIELD_SIZE}px`);
-  workspaceElement.style.setProperty("--scene-playfield-size", `${PLAYFIELD_SIZE}px`);
+  workspaceElement.style.setProperty("--scene-width", `${PLAYFIELD_WIDTH}px`);
+  workspaceElement.style.setProperty("--scene-height", `${PLAYFIELD_HEIGHT}px`);
+  workspaceElement.style.setProperty("--scene-playfield-width", `${PLAYFIELD_WIDTH}px`);
+  workspaceElement.style.setProperty("--scene-playfield-height", `${PLAYFIELD_HEIGHT}px`);
   workspaceElement.style.setProperty("--scene-margin", `${SCENE_MARGIN}px`);
   document.documentElement.style.setProperty("--scene-x", `${camera.x}px`);
   document.documentElement.style.setProperty("--scene-y", `${camera.y}px`);
@@ -93,8 +97,14 @@ function refreshCameraBounds({ shouldCenter = false } = {}) {
   updateSceneSize();
   if (shouldCenter) {
     const viewport = getViewportSize();
-    const centerX = SCENE_MARGIN + PLAYFIELD_SIZE / 2;
-    const centerY = SCENE_MARGIN + PLAYFIELD_SIZE / 2;
+    const focusPlot = state.farm.plots[0] || null;
+    const focusSize = focusPlot ? getFarmPlotSize(focusPlot) : null;
+    const centerX = focusPlot && focusSize
+      ? SCENE_MARGIN + focusPlot.left + focusSize.width / 2
+      : SCENE_MARGIN + PLAYFIELD_WIDTH / 2;
+    const centerY = focusPlot && focusSize
+      ? SCENE_MARGIN + focusPlot.top + focusSize.height / 2
+      : SCENE_MARGIN + PLAYFIELD_HEIGHT / 2;
     camera.x = viewport.width / 2 - centerX;
     camera.y = viewport.height / 2 - centerY;
   }
@@ -171,10 +181,12 @@ export function mountSceneCamera() {
   }
 
   refreshCameraBounds({ shouldCenter: true });
+  window.requestAnimationFrame(() => refreshCameraBounds({ shouldCenter: true }));
   sceneElement.addEventListener("pointerdown", startPan);
   sceneElement.addEventListener("pointermove", movePan, { passive: false });
   sceneElement.addEventListener("pointerup", endPan);
   sceneElement.addEventListener("pointercancel", endPan);
   window.addEventListener("resize", () => refreshCameraBounds());
+  window.addEventListener("idle-farm-center-scene", () => refreshCameraBounds({ shouldCenter: true }));
   onStateChange(queueBoundsRefresh);
 }

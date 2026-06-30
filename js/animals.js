@@ -1,7 +1,9 @@
 import { cow } from "./items/cow.js";
 import { chicken } from "./items/chicken.js";
+import { sheep } from "./items/sheep.js";
+import { bee } from "./items/bee.js";
 
-export const ANIMAL_ITEMS = [cow, chicken];
+export const ANIMAL_ITEMS = [bee, chicken, cow, sheep];
 
 export const ANIMALS = Object.fromEntries(ANIMAL_ITEMS.map(({ animal }) => [animal.id, animal]));
 

@@ -13,6 +13,7 @@ export const CELL_SIZES = {
   animalFeeder: { width: 192, height: 190 },
   animalPen: { width: 192, height: 196 },
   chickenCoop: { width: 192, height: 196 },
+  beehive: { width: 192, height: 196 },
   tools: { width: 150, height: 72 },
 };
 

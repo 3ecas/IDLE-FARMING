@@ -35,30 +35,36 @@ function getCycleState(startedAt) {
 }
 
 export function mountInfoPanel() {
-  const moneyValue = document.querySelector("[data-top-money-value]");
-  const addMoneyButton = document.querySelector("[data-add-coins]");
-  const dayNightFill = document.querySelector("[data-day-night-fill]");
-  const dayNightCell = document.querySelector("[data-day-night-cell]");
   const startedAt = readCycleStart();
 
   function renderMoney() {
-    if (moneyValue) {
+    document.querySelectorAll("[data-top-money-value]").forEach((moneyValue) => {
       moneyValue.textContent = String(state.coins);
-    }
+    });
   }
 
   function renderCycle() {
     const cycleState = getCycleState(startedAt);
     document.body.classList.toggle("is-night", cycleState.isNight);
-    dayNightCell?.classList.toggle("is-night", cycleState.isNight);
-    if (dayNightFill) {
+    document.querySelectorAll("[data-day-night-cell]").forEach((dayNightCell) => {
+      dayNightCell.classList.toggle("is-night", cycleState.isNight);
+    });
+    document.querySelectorAll("[data-day-night-fill]").forEach((dayNightFill) => {
       dayNightFill.style.width = `${cycleState.progress}%`;
-    }
+    });
+    document.querySelectorAll("[data-cycle-phase]").forEach((phaseElement) => {
+      phaseElement.textContent = cycleState.isNight ? "Night" : "Day";
+    });
   }
 
   renderMoney();
   renderCycle();
-  addMoneyButton?.addEventListener("click", () => addCoins(100));
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-add-coins]")) {
+      addCoins(100);
+    }
+  });
   onStateChange(renderMoney);
+  onStateChange(renderCycle);
   window.setInterval(renderCycle, UPDATE_INTERVAL_MS);
 }

@@ -11,7 +11,12 @@ const GRID_SIZE = 24;
 const FARM_PLOT_SIZE = 72;
 const FARM_PLOT_SPAWN_GAP = 0;
 const STARTER_LAYOUT_MARGIN = 24;
-const FARM_PLOT_BASE_COST = 10;
+const FARM_PLOT_BASE_COSTS = {
+  "1x1": 10,
+  "2x1": 22,
+  "2x2": 46,
+  "3x3": 103,
+};
 const FARM_PLOT_PRICE_GROWTH = 1.75;
 const FARM_PLOT_STORAGE_KEY = "idle-farm-farm-plots-v2";
 const FARM_PLOT_SAVE_VERSION = "5";
@@ -41,6 +46,7 @@ const LAYOUT_CELL_KEYS = [
   "animalFeeder",
   "animalPen",
   "chickenCoop",
+  "beehive",
   "tools",
 ];
 const CELL_REVEAL_GAP = 20;
@@ -54,16 +60,19 @@ const ANIMAL_PEN_WOOD_COST = 55;
 const ANIMAL_PEN_NAIL_COST = 0;
 const CHICKEN_COOP_WOOD_COST = 25;
 const CHICKEN_COOP_NAIL_COST = 0;
+const BEEHIVE_WOOD_COST = 25;
+const BEEHIVE_NAIL_COST = 0;
 const BAKERY_STORAGE_KEY = "idle-farm-bakery-v1";
 const BAKERY_SAVE_VERSION = "1";
 const ANIMAL_PEN_STORAGE_KEY = "idle-farm-animal-pen-v1";
 const CHICKEN_COOP_STORAGE_KEY = "idle-farm-chicken-coop-v1";
+const BEEHIVE_STORAGE_KEY = "idle-farm-beehive-v1";
 const ANIMAL_PEN_SAVE_VERSION = "1";
+const ANIMAL_SLOT_BASE_COST = 10;
+const ANIMAL_SLOT_PRICE_GROWTH = 1.75;
 const ANIMAL_FEEDER_TARGETS = [
-  { id: "cowPen", label: "Cow Pen", storageKey: "animalFeederCowPenEnabled" },
+  { id: "cowPen", label: "Animal Pen", storageKey: "animalFeederCowPenEnabled" },
   { id: "chickenCoop", label: "Chicken Coop", storageKey: "animalFeederChickenCoopEnabled" },
-  { id: "sheepFold", label: "SheepFold", storageKey: "animalFeederSheepFoldEnabled" },
-  { id: "pigsty", label: "Pigsty", storageKey: "animalFeederPigstyEnabled" },
 ];
 
 const STORAGE_KEYS = {
@@ -81,6 +90,7 @@ const STORAGE_KEYS = {
   animalFeeder: "idle-farm-animal-feeder-cell-position",
   animalPen: "idle-farm-animal-pen-cell-position",
   chickenCoop: "idle-farm-chicken-coop-cell-position",
+  beehive: "idle-farm-beehive-cell-position",
   millBuilt: "idle-farm-mill-built",
   bakeryBuilt: "idle-farm-bakery-built",
   animalFeederBuilt: "idle-farm-animal-feeder-built",
@@ -92,10 +102,13 @@ const STORAGE_KEYS = {
   bakerySaveVersion: "idle-farm-bakery-version",
   animalPenBuilt: "idle-farm-animal-pen-built",
   chickenCoopBuilt: "idle-farm-chicken-coop-built",
+  beehiveBuilt: "idle-farm-beehive-built",
   animalPenSaveVersion: "idle-farm-animal-pen-version",
   chickenCoopSaveVersion: "idle-farm-chicken-coop-version",
+  beehiveSaveVersion: "idle-farm-beehive-version",
   tools: "idle-farm-tools-cell-position",
   farmPlots: "idle-farm-farm-plots",
+  farmPlotPurchases: "idle-farm-farm-plot-purchases",
   hiddenCells: "idle-farm-hidden-cells",
   layoutInitialized: "idle-farm-layout-initialized",
   layoutVersion: "idle-farm-layout-version",
@@ -117,6 +130,7 @@ const DEFAULT_CELL_POSITIONS = {
   animalFeeder: readCellPosition("animalFeeder", { left: 248, top: 656 }),
   animalPen: readCellPosition("animalPen", { left: 48, top: 420 }),
   chickenCoop: readCellPosition("chickenCoop", { left: 248, top: 420 }),
+  beehive: readCellPosition("beehive", { left: 448, top: 420 }),
   tools: readCellPosition("tools", { left: 48, top: 240 }),
 };
 
@@ -482,10 +496,14 @@ function normalizeAnimalPenState(pen) {
         .map((animal, index) => normalizeAnimalPenAnimal(animal, index))
         .filter(Boolean)
     : [];
+  const slots = Number.isFinite(source.slots)
+    ? Math.max(animals.length, Math.floor(source.slots))
+    : animals.length;
 
   return {
     food: normalizeAnimalPenFood(source.food),
     animals,
+    slots,
   };
 }
 
@@ -507,9 +525,18 @@ function saveChickenCoopState(pen = state.chickenCoop) {
   }
 }
 
+function saveBeehiveState(pen = state.beehive) {
+  try {
+    localStorage.setItem(BEEHIVE_STORAGE_KEY, JSON.stringify(pen));
+    localStorage.setItem(STORAGE_KEYS.beehiveSaveVersion, ANIMAL_PEN_SAVE_VERSION);
+  } catch {
+    // Best effort.
+  }
+}
+
 function readAnimalPenState() {
   const storedVersion = localStorage.getItem(STORAGE_KEYS.animalPenSaveVersion);
-  const emptyPen = { food: {}, animals: [] };
+  const emptyPen = { food: {}, animals: [], slots: 0 };
 
   if (storedVersion !== ANIMAL_PEN_SAVE_VERSION) {
     saveAnimalPenState(emptyPen);
@@ -529,7 +556,7 @@ function readAnimalPenState() {
 
 function readChickenCoopState() {
   const storedVersion = localStorage.getItem(STORAGE_KEYS.chickenCoopSaveVersion);
-  const emptyPen = { food: {}, animals: [] };
+  const emptyPen = { food: {}, animals: [], slots: 0 };
 
   if (storedVersion !== ANIMAL_PEN_SAVE_VERSION) {
     saveChickenCoopState(emptyPen);
@@ -543,6 +570,26 @@ function readChickenCoopState() {
     return pen;
   } catch {
     saveChickenCoopState(emptyPen);
+    return emptyPen;
+  }
+}
+
+function readBeehiveState() {
+  const storedVersion = localStorage.getItem(STORAGE_KEYS.beehiveSaveVersion);
+  const emptyPen = { food: {}, animals: [], slots: 0 };
+
+  if (storedVersion !== ANIMAL_PEN_SAVE_VERSION) {
+    saveBeehiveState(emptyPen);
+    return emptyPen;
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BEEHIVE_STORAGE_KEY) || "null");
+    const pen = normalizeAnimalPenState(parsed);
+    saveBeehiveState(pen);
+    return pen;
+  } catch {
+    saveBeehiveState(emptyPen);
     return emptyPen;
   }
 }
@@ -628,13 +675,14 @@ export function getStarterLayoutPositions() {
   const animalFeederSize = getCellSize("animalFeeder");
   const animalPenSize = getCellSize("animalPen");
   const chickenCoopSize = getCellSize("chickenCoop");
+  const beehiveSize = getCellSize("beehive");
   const menuLeft = Math.max(16, Math.round((workspace.width - menuSize.width) / 2));
   const toolsLeft = menuLeft;
   const menuTop = Math.max(16, Math.round((workspace.height - menuSize.height) / 2));
   const toolsTop = menuTop + menuSize.height + gap;
   const popupTop = Math.max(16, menuTop - Math.max(marketSize.height, barnSize.height) - gap);
   const popupBottomTop = Math.min(workspace.height - moneySize.height - 16, menuTop + menuSize.height + gap);
-  const rightColumnWidth = Math.max(buildSize.width, millSize.width, bakerySize.width, animalFeederSize.width, animalPenSize.width, chickenCoopSize.width);
+  const rightColumnWidth = Math.max(buildSize.width, millSize.width, bakerySize.width, animalFeederSize.width, animalPenSize.width, chickenCoopSize.width, beehiveSize.width);
   const popupRightLeft = Math.min(
     Math.max(16, menuLeft),
     Math.max(16, workspace.width - Math.max(rightColumnWidth, moneySize.width) - 16)
@@ -645,6 +693,7 @@ export function getStarterLayoutPositions() {
   const animalFeederTop = Math.min(workspace.height - animalFeederSize.height - 16, bakeryTop + bakerySize.height + gap);
   const animalPenTop = Math.min(workspace.height - animalPenSize.height - 16, animalFeederTop + animalFeederSize.height + gap);
   const chickenCoopTop = Math.min(workspace.height - chickenCoopSize.height - 16, animalPenTop + animalPenSize.height + gap);
+  const beehiveTop = Math.min(workspace.height - beehiveSize.height - 16, chickenCoopTop + chickenCoopSize.height + gap);
 
   return {
     barn: { left: menuLeft, top: popupBottomTop },
@@ -660,6 +709,7 @@ export function getStarterLayoutPositions() {
     animalFeeder: { left: popupRightLeft, top: animalFeederTop },
     animalPen: { left: popupRightLeft, top: animalPenTop },
     chickenCoop: { left: popupRightLeft, top: chickenCoopTop },
+    beehive: { left: popupRightLeft, top: beehiveTop },
     tools: { left: toolsLeft, top: toolsTop },
   };
 }
@@ -772,6 +822,12 @@ function getObstacleRects(excludePlotId = null) {
       top: DEFAULT_CELL_POSITIONS.chickenCoop.top,
       width: getCellSize("chickenCoop").width,
       height: getCellSize("chickenCoop").height,
+    },
+    {
+      left: DEFAULT_CELL_POSITIONS.beehive.left,
+      top: DEFAULT_CELL_POSITIONS.beehive.top,
+      width: getCellSize("beehive").width,
+      height: getCellSize("beehive").height,
     },
   ];
 }
@@ -983,16 +1039,22 @@ function normalizeFarmPlot(plot, index, existingPlots = []) {
   const stage = plot.stage === FARM_STAGE_PLANTED || plot.stage === FARM_STAGE_GROWING || plot.stage === FARM_STAGE_MATURE
     ? plot.stage
     : FARM_STAGE_EMPTY;
+  const tiles = normalizeFarmPlotTiles({ ...plot, stage }, columns, rows);
+  const hasPerennialTile = tiles.some((tile) => isPerennialCropId(tile.cropId));
+  const kind = plot.kind === "tree" || hasPerennialTile ? "tree" : "farm";
+  const locked = kind === "tree" ? false : Boolean(plot.locked);
   return {
     id,
     left: position.left,
     top: position.top,
     columns,
     rows,
-    tiles: normalizeFarmPlotTiles({ ...plot, stage }, columns, rows),
+    kind,
+    tiles,
     cropId: null,
     stage: FARM_STAGE_EMPTY,
     growCompleteAt: null,
+    locked,
   };
 }
 
@@ -1013,11 +1075,13 @@ export const state = {
     animalFeeder: DEFAULT_CELL_POSITIONS.animalFeeder,
     animalPen: DEFAULT_CELL_POSITIONS.animalPen,
     chickenCoop: DEFAULT_CELL_POSITIONS.chickenCoop,
+    beehive: DEFAULT_CELL_POSITIONS.beehive,
     tools: DEFAULT_CELL_POSITIONS.tools,
   },
   farm: {
     plots: readFarmPlots(),
     enteringPlotIds: [],
+    plotPurchaseCount: readNumber("farmPlotPurchases", Math.max(0, readNumber("farmPlots", 1) - 1)),
   },
   ui: {
     hiddenCellKeys: readStringArray("hiddenCells", DEFAULT_HIDDEN_CELL_KEYS),
@@ -1038,12 +1102,14 @@ export const state = {
   bakery: readBakeryState(),
   animalPen: readAnimalPenState(),
   chickenCoop: readChickenCoopState(),
+  beehive: readBeehiveState(),
   buildings: {
     mill: readFlag("millBuilt", false),
     bakery: readFlag("bakeryBuilt", false),
     animalFeeder: readFlag("animalFeederBuilt", false),
     animalPen: readFlag("animalPenBuilt", false),
     chickenCoop: readFlag("chickenCoopBuilt", false),
+    beehive: readFlag("beehiveBuilt", false),
   },
   animalFeeder: {
     enabled: readFlag("animalFeederEnabled", false),
@@ -1237,6 +1303,7 @@ export function applyStarterLayout(force = false) {
   state.cells.animalFeeder = layout.animalFeeder;
   state.cells.animalPen = layout.animalPen;
   state.cells.chickenCoop = layout.chickenCoop;
+  state.cells.beehive = layout.beehive;
   state.cells.tools = layout.tools;
   saveCellPosition("market", state.cells.market);
   saveCellPosition("sellMarket", state.cells.sellMarket);
@@ -1251,6 +1318,7 @@ export function applyStarterLayout(force = false) {
   saveCellPosition("animalFeeder", state.cells.animalFeeder);
   saveCellPosition("animalPen", state.cells.animalPen);
   saveCellPosition("chickenCoop", state.cells.chickenCoop);
+  saveCellPosition("beehive", state.cells.beehive);
   saveCellPosition("tools", state.cells.tools);
   if (!force && storedLayoutVersion !== LAYOUT_SAVE_VERSION) {
     state.ui.hiddenCellKeys = Array.from(new Set([...state.ui.hiddenCellKeys, ...DEFAULT_HIDDEN_CELL_KEYS]));
@@ -1360,6 +1428,10 @@ function hydratePlotGrowthTimers() {
       const tileId = getFarmPlotTileId(plot.id, index);
       if (tile.stage === FARM_STAGE_GROWING && Number.isFinite(tile.growCompleteAt)) {
         schedulePlotGrowth(tile, tileId);
+      } else if (tile.stage === FARM_STAGE_PLANTED && isPerennialCropId(tile.cropId)) {
+        tile.stage = FARM_STAGE_GROWING;
+        tile.growCompleteAt = Date.now() + getPlotGrowthDurationMs(tile);
+        schedulePlotGrowth(tile, tileId);
       } else if (tile.stage === FARM_STAGE_GROWING) {
         tile.stage = FARM_STAGE_PLANTED;
         tile.growCompleteAt = null;
@@ -1428,6 +1500,50 @@ function getPlotGrowthDurationMs(plot) {
   return Number.isFinite(cropProduct?.growDurationMs) ? cropProduct.growDurationMs : 0;
 }
 
+function getHarvestYieldQuantity(product) {
+  const min = Number.isFinite(product?.harvestYieldMin)
+    ? product.harvestYieldMin
+    : Number.isFinite(product?.harvestYield)
+      ? product.harvestYield
+      : 1;
+  const max = Number.isFinite(product?.harvestYieldMax)
+    ? product.harvestYieldMax
+    : Number.isFinite(product?.harvestYield)
+      ? product.harvestYield
+      : min;
+
+  if (max <= min) {
+    return Math.max(1, Math.floor(min));
+  }
+
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function isPerennialCropId(cropId) {
+  const plantedProduct = typeof cropId === "string" ? getProduct(cropId) : null;
+  const cropProduct = plantedProduct?.cropProductId ? getProduct(plantedProduct.cropProductId) : plantedProduct;
+  return Boolean(cropProduct?.autoGrow || cropProduct?.repeatHarvest);
+}
+
+function getSeedPlantSize(seedProduct) {
+  const plantSize = seedProduct?.plantSize && typeof seedProduct.plantSize === "object"
+    ? seedProduct.plantSize
+    : {};
+
+  return getFarmPlotSize({
+    columns: plantSize.columns || 1,
+    rows: plantSize.rows || 1,
+  });
+}
+
+function isFarmPlotEmpty(plot) {
+  return getPlotTiles(plot).every((tile) => !tile.cropId);
+}
+
+function isTreeSceneObject(plot) {
+  return plot?.kind === "tree" || getPlotTiles(plot).some((tile) => isPerennialCropId(tile.cropId));
+}
+
 function getAnimalProduct(productId) {
   const product = getProduct(productId);
   return product?.category === "animals" ? product : null;
@@ -1452,7 +1568,7 @@ function getAnimalPenTargets() {
     {
       id: "cowPen",
       buildingId: "animalPen",
-      label: "Cow Pen",
+      label: "Animal Pen",
       pen: state.animalPen,
       save: saveAnimalPenState,
     },
@@ -1463,7 +1579,32 @@ function getAnimalPenTargets() {
       pen: state.chickenCoop,
       save: saveChickenCoopState,
     },
+    {
+      id: "beehive",
+      buildingId: "beehive",
+      label: "Beehive",
+      pen: state.beehive,
+      save: saveBeehiveState,
+    },
   ];
+}
+
+function getAnimalPenTargetForProduct(productId) {
+  const product = getAnimalProduct(productId);
+  if (!product) {
+    return null;
+  }
+
+  return getAnimalPenTargets().find((entry) => entry.buildingId === (product.penBuildingId || "animalPen")) || null;
+}
+
+function getAnimalPenSlotCount(pen) {
+  return Math.max(0, Math.floor(Number(pen?.slots) || 0));
+}
+
+function getAnimalPenNextSlotCost(pen) {
+  const slotCount = getAnimalPenSlotCount(pen);
+  return Math.ceil(ANIMAL_SLOT_BASE_COST * Math.pow(ANIMAL_SLOT_PRICE_GROWTH, slotCount));
 }
 
 function getNeededPenFood(pen) {
@@ -1498,6 +1639,16 @@ function getAnimalProductionQuantity(product) {
   }
 
   return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function grantProductionDrops(product) {
+  if (!product?.productionDrops || typeof product.productionDrops !== "object") {
+    return;
+  }
+
+  for (const [productId, quantity] of Object.entries(product.productionDrops)) {
+    grantBarnItemSilently(productId, quantity);
+  }
 }
 
 function getAnimalOutputProductId(productId) {
@@ -1862,6 +2013,7 @@ function advanceAnimalPenProduction({ shouldNotify = true, shouldAutoFeed = true
         const outputProduct = outputProductId ? getProduct(outputProductId) : null;
         if (outputProduct) {
           grantBarnItemSilently(outputProduct.id, getAnimalProductionQuantity(outputProduct));
+          grantProductionDrops(outputProduct);
           producedProductName = outputProduct.inventoryName;
           targetChanged = true;
           changed = true;
@@ -1924,22 +2076,34 @@ function advanceAnimalPenProduction({ shouldNotify = true, shouldAutoFeed = true
 
 function hydrateAnimalPenState() {
   if (!state.animalPen || typeof state.animalPen !== "object") {
-    state.animalPen = { food: {}, animals: [] };
+    state.animalPen = { food: {}, animals: [], slots: 0 };
   }
 
   state.animalPen.food = normalizeAnimalPenFood(state.animalPen.food);
   state.animalPen.animals = Array.isArray(state.animalPen.animals)
     ? state.animalPen.animals.filter((animal) => animal && typeof animal === "object")
     : [];
+  state.animalPen.slots = Math.max(getAnimalPenSlotCount(state.animalPen), state.animalPen.animals.length);
 
   if (!state.chickenCoop || typeof state.chickenCoop !== "object") {
-    state.chickenCoop = { food: {}, animals: [] };
+    state.chickenCoop = { food: {}, animals: [], slots: 0 };
   }
 
   state.chickenCoop.food = normalizeAnimalPenFood(state.chickenCoop.food);
   state.chickenCoop.animals = Array.isArray(state.chickenCoop.animals)
     ? state.chickenCoop.animals.filter((animal) => animal && typeof animal === "object")
     : [];
+  state.chickenCoop.slots = Math.max(getAnimalPenSlotCount(state.chickenCoop), state.chickenCoop.animals.length);
+
+  if (!state.beehive || typeof state.beehive !== "object") {
+    state.beehive = { food: {}, animals: [], slots: 0 };
+  }
+
+  state.beehive.food = normalizeAnimalPenFood(state.beehive.food);
+  state.beehive.animals = Array.isArray(state.beehive.animals)
+    ? state.beehive.animals.filter((animal) => animal && typeof animal === "object")
+    : [];
+  state.beehive.slots = Math.max(getAnimalPenSlotCount(state.beehive), state.beehive.animals.length);
 
   advanceAnimalPenProduction({ shouldNotify: false });
 }
@@ -2026,6 +2190,10 @@ export function canBuildAnimalPen() {
 
 export function canBuildChickenCoop() {
   return getBarnItemQuantity("wood") >= CHICKEN_COOP_WOOD_COST && getBarnItemQuantity("nails") >= CHICKEN_COOP_NAIL_COST;
+}
+
+export function canBuildBeehive() {
+  return getBarnItemQuantity("wood") >= BEEHIVE_WOOD_COST && getBarnItemQuantity("nails") >= BEEHIVE_NAIL_COST;
 }
 
 export function canBuildAnimalFeeder() {
@@ -2130,6 +2298,30 @@ export function getAnimalFeederStatusText() {
   return hasFood ? "Feeding" : "No food";
 }
 
+export function getAnimalSlotInfo(productId) {
+  const target = getAnimalPenTargetForProduct(productId);
+  if (!target) {
+    return {
+      slots: 0,
+      animals: 0,
+      hasOpenSlot: false,
+      nextSlotCost: 0,
+      canAffordNextSlot: false,
+    };
+  }
+
+  const slots = getAnimalPenSlotCount(target.pen);
+  const animals = Array.isArray(target.pen.animals) ? target.pen.animals.length : 0;
+  const nextSlotCost = getAnimalPenNextSlotCost(target.pen);
+  return {
+    slots,
+    animals,
+    hasOpenSlot: animals < slots,
+    nextSlotCost,
+    canAffordNextSlot: state.coins >= nextSlotCost,
+  };
+}
+
 function getAnimalFeederTargetStatusText(targetId) {
   if (!state.buildings.animalFeeder) {
     return "Not built";
@@ -2159,7 +2351,7 @@ function getAnimalFeederTargetStatusText(targetId) {
 
 export function buildAnimalPen() {
   if (state.buildings.animalPen) {
-    state.message = "Cow pen already built.";
+    state.message = "Animal pen already built.";
     notify();
     return false;
   }
@@ -2174,7 +2366,7 @@ export function buildAnimalPen() {
   consumeBarnItemSilently("nails", ANIMAL_PEN_NAIL_COST);
   state.buildings.animalPen = true;
   saveFlag("animalPenBuilt", true);
-  state.message = "Cow pen built.";
+  state.message = "Animal pen built.";
   autoFeedAnimalPens({ shouldAdvance: false });
   advanceAnimalPenProduction({ shouldNotify: false });
   notify();
@@ -2205,6 +2397,29 @@ export function buildChickenCoop() {
   return true;
 }
 
+export function buildBeehive() {
+  if (state.buildings.beehive) {
+    state.message = "Beehive already built.";
+    notify();
+    return false;
+  }
+
+  if (!canBuildBeehive()) {
+    state.message = `Need ${BEEHIVE_WOOD_COST} wood.`;
+    notify();
+    return false;
+  }
+
+  consumeBarnItemSilently("wood", BEEHIVE_WOOD_COST);
+  consumeBarnItemSilently("nails", BEEHIVE_NAIL_COST);
+  state.buildings.beehive = true;
+  saveFlag("beehiveBuilt", true);
+  state.message = "Beehive built.";
+  advanceAnimalPenProduction({ shouldNotify: false });
+  notify();
+  return true;
+}
+
 export function addAnimalToPen(productId) {
   const product = getAnimalProduct(productId);
   if (!product) {
@@ -2213,7 +2428,7 @@ export function addAnimalToPen(productId) {
     return false;
   }
 
-  const target = getAnimalPenTargets().find((entry) => entry.buildingId === (product.penBuildingId || "animalPen"));
+  const target = getAnimalPenTargetForProduct(productId);
   if (!target) {
     state.message = "That animal cannot go there.";
     notify();
@@ -2226,10 +2441,26 @@ export function addAnimalToPen(productId) {
     return false;
   }
 
+  const slotCount = getAnimalPenSlotCount(target.pen);
+  const needsSlot = target.pen.animals.length >= slotCount;
+  const slotCost = needsSlot ? getAnimalPenNextSlotCost(target.pen) : 0;
+  if (needsSlot && state.coins < slotCost) {
+    state.message = `Need ${slotCost} coins for a new slot.`;
+    notify();
+    return false;
+  }
+
   if (!consumeBarnItemSilently(productId, 1)) {
     state.message = `No ${product.inventoryName} left.`;
     notify();
     return false;
+  }
+
+  if (needsSlot) {
+    state.coins -= slotCost;
+    target.pen.slots = slotCount + 1;
+  } else {
+    target.pen.slots = slotCount;
   }
 
   target.pen.animals.push({
@@ -2245,10 +2476,37 @@ export function addAnimalToPen(productId) {
   return true;
 }
 
+export function returnAnimalFromPen(buildingId, animalId) {
+  const target = getAnimalPenTargets().find((entry) => entry.buildingId === buildingId);
+  if (!target || !state.buildings[target.buildingId]) {
+    state.message = "That building is not available.";
+    notify();
+    return false;
+  }
+
+  const animalIndex = target.pen.animals.findIndex((animal) => animal.id === animalId);
+  if (animalIndex === -1) {
+    state.message = "Animal not found.";
+    notify();
+    return false;
+  }
+
+  const [animal] = target.pen.animals.splice(animalIndex, 1);
+  target.pen.slots = Math.max(getAnimalPenSlotCount(target.pen), target.pen.animals.length);
+  grantBarnItemSilently(animal.productId, 1);
+  target.save(target.pen);
+  if (!hasActiveAnimalPenCycles()) {
+    clearAnimalPenTicker();
+  }
+  state.message = `${getProduct(animal.productId)?.inventoryName || "Animal"} returned to barn.`;
+  notify();
+  return true;
+}
+
 export function addAnimalFoodToPen(productId, quantity = 1) {
   const product = getProduct(productId);
-  if (!product || product.id !== "strawCrop") {
-    state.message = "Only straw goes here.";
+  if (!product || (product.id !== "strawCrop" && product.id !== "cornCrop")) {
+    state.message = "Only straw or corn goes here.";
     notify();
     return false;
   }
@@ -2269,6 +2527,42 @@ export function addAnimalFoodToPen(productId, quantity = 1) {
   saveAnimalPenState(state.animalPen);
   advanceAnimalPenProduction({ shouldNotify: false });
   state.message = "Food added.";
+  notify();
+  return true;
+}
+
+export function removeAnimalFoodFromPen(productId, quantity = 1) {
+  const product = getProduct(productId);
+  if (!product || (product.id !== "strawCrop" && product.id !== "cornCrop")) {
+    state.message = "Only straw or corn goes here.";
+    notify();
+    return false;
+  }
+
+  if (!state.buildings.animalPen) {
+    state.message = "Build an animal pen first.";
+    notify();
+    return false;
+  }
+
+  const currentQuantity = state.animalPen.food[productId] || 0;
+  if (currentQuantity < quantity) {
+    state.message = "No animal food to remove.";
+    notify();
+    return false;
+  }
+
+  const nextQuantity = currentQuantity - quantity;
+  if (nextQuantity > 0) {
+    state.animalPen.food[productId] = nextQuantity;
+  } else {
+    delete state.animalPen.food[productId];
+  }
+
+  grantBarnItemSilently(productId, quantity);
+  saveAnimalPenState(state.animalPen);
+  advanceAnimalPenProduction({ shouldNotify: false, shouldAutoFeed: false });
+  state.message = "Animal food removed.";
   notify();
   return true;
 }
@@ -2597,8 +2891,67 @@ function plantSeedOnPlot(plotTileId, seedId) {
   }
 
   const tileRecord = getFarmPlotTileById(plotTileId);
-  if (!tileRecord || tileRecord.tile.cropId) {
+  if (!tileRecord) {
     state.message = "Plot is occupied.";
+    notify();
+    return false;
+  }
+
+  const plantedProduct = selectedProduct.cropProductId ? getProduct(selectedProduct.cropProductId) : null;
+  const plantSize = getSeedPlantSize(selectedProduct);
+  const usesWholePlot = Boolean(plantedProduct?.autoGrow && plantSize.area > 1);
+
+  if (!usesWholePlot && tileRecord.tile.cropId) {
+    state.message = "Plot is occupied.";
+    notify();
+    return false;
+  }
+
+  if (usesWholePlot && !isFarmPlotEmpty(tileRecord.plot)) {
+    state.message = "Tree needs an empty plot.";
+    notify();
+    return false;
+  }
+
+  let targetPlot = tileRecord.plot;
+  let targetTile = tileRecord.tile;
+  let targetTileId = tileRecord.tileId;
+
+  if (usesWholePlot) {
+    const nextPosition = clampFarmPlotToWorkspace({
+      left: targetPlot.left,
+      top: targetPlot.top,
+      columns: plantSize.columns,
+      rows: plantSize.rows,
+    });
+    const candidate = {
+      left: nextPosition.left,
+      top: nextPosition.top,
+      columns: plantSize.columns,
+      rows: plantSize.rows,
+    };
+
+    if (!isFarmPlotPositionFree(candidate, state.farm.plots, targetPlot.id)) {
+      state.message = `Need more space for a ${plantSize.columns}x${plantSize.rows} tree.`;
+      notify();
+      return false;
+    }
+
+    clearFarmPlotGrowthTimers(targetPlot);
+    targetPlot.left = candidate.left;
+    targetPlot.top = candidate.top;
+    targetPlot.columns = plantSize.columns;
+    targetPlot.rows = plantSize.rows;
+    targetPlot.kind = "tree";
+    targetPlot.tiles = Array.from({ length: plantSize.area }, () => createEmptyFarmPlotTile());
+    targetPlot.cropId = null;
+    targetPlot.stage = FARM_STAGE_EMPTY;
+    targetPlot.growCompleteAt = null;
+    targetPlot.locked = false;
+    targetTile = targetPlot.tiles[0];
+    targetTileId = getFarmPlotTileId(targetPlot.id, 0);
+  } else if (plantedProduct?.autoGrow && getFarmPlotSize(targetPlot).area !== 1) {
+    state.message = "Plant trees on 1x1 plots.";
     notify();
     return false;
   }
@@ -2609,10 +2962,17 @@ function plantSeedOnPlot(plotTileId, seedId) {
     return false;
   }
 
-  tileRecord.tile.cropId = seedId;
-  tileRecord.tile.stage = FARM_STAGE_PLANTED;
-  tileRecord.tile.growCompleteAt = null;
-  clearPlotGrowthTimer(tileRecord.tileId);
+  targetTile.cropId = seedId;
+  targetTile.stage = plantedProduct?.autoGrow ? FARM_STAGE_GROWING : FARM_STAGE_PLANTED;
+  targetTile.growCompleteAt = plantedProduct?.autoGrow ? Date.now() + getPlotGrowthDurationMs(targetTile) : null;
+  targetPlot.locked = Boolean(plantedProduct?.autoGrow && !isTreeSceneObject(targetPlot)) || targetPlot.locked;
+  clearPlotGrowthTimer(targetTileId);
+  if (plantedProduct?.autoGrow) {
+    schedulePlotGrowth(targetTile, targetTileId);
+    if (state.inventory.selectedItemId === seedId) {
+      state.inventory.selectedItemId = null;
+    }
+  }
   saveFarmState();
   state.message = `${selectedProduct.inventoryName} planted.`;
   notify();
@@ -2623,6 +2983,12 @@ export function waterPlot(plotTileId) {
   const tileRecord = getFarmPlotTileById(plotTileId);
   if (!tileRecord || !tileRecord.tile.cropId || tileRecord.tile.stage === FARM_STAGE_MATURE) {
     state.message = "Nothing to water.";
+    notify();
+    return false;
+  }
+
+  if (isPerennialCropId(tileRecord.tile.cropId)) {
+    state.message = "This tree grows on its own.";
     notify();
     return false;
   }
@@ -2645,12 +3011,25 @@ export function harvestPlot(plotTileId) {
   }
 
   const tile = tileRecord.tile;
+  const plantedProduct = getPlantedCropProduct(tile);
+  const isPerennial = Boolean(plantedProduct?.autoGrow || plantedProduct?.repeatHarvest);
 
   if (tile.stage === FARM_STAGE_PLANTED || tile.stage === FARM_STAGE_GROWING) {
+    if (isPerennial) {
+      tile.stage = FARM_STAGE_GROWING;
+      tile.growCompleteAt = Date.now() + getPlotGrowthDurationMs(tile);
+      schedulePlotGrowth(tile, tileRecord.tileId);
+      saveFarmState();
+      state.message = "Tree keeps growing.";
+      notify();
+      return true;
+    }
+
     grantBarnItemSilently(tile.cropId, 1);
     tile.cropId = null;
     tile.stage = FARM_STAGE_EMPTY;
     tile.growCompleteAt = null;
+    tileRecord.plot.locked = false;
     clearPlotGrowthTimer(tileRecord.tileId);
     saveFarmState();
     state.message = "Seed recovered.";
@@ -2664,10 +3043,10 @@ export function harvestPlot(plotTileId) {
     return false;
   }
 
-  const plantedProduct = getProduct(tile.cropId);
-  const harvestProductId = plantedProduct?.cropProductId || tile.cropId;
+  const plantedSeedProduct = getProduct(tile.cropId);
+  const harvestProductId = plantedSeedProduct?.cropProductId || tile.cropId;
   const cropProduct = getProduct(harvestProductId);
-  const harvestQuantity = Number.isFinite(cropProduct?.harvestYield) ? cropProduct.harvestYield : 1;
+  const harvestQuantity = getHarvestYieldQuantity(cropProduct);
   grantBarnItemSilently(harvestProductId, harvestQuantity);
   if (cropProduct?.harvestDrops && typeof cropProduct.harvestDrops === "object") {
     for (const [productId, quantity] of Object.entries(cropProduct.harvestDrops)) {
@@ -2675,10 +3054,18 @@ export function harvestPlot(plotTileId) {
     }
   }
   autoFeedAnimalPens({ shouldNotify: false });
-  tile.cropId = null;
-  tile.stage = FARM_STAGE_EMPTY;
-  tile.growCompleteAt = null;
-  clearPlotGrowthTimer(tileRecord.tileId);
+  if (cropProduct?.repeatHarvest || cropProduct?.autoGrow) {
+    tile.stage = FARM_STAGE_GROWING;
+    tile.growCompleteAt = Date.now() + getPlotGrowthDurationMs(tile);
+    tileRecord.plot.locked = !isTreeSceneObject(tileRecord.plot);
+    schedulePlotGrowth(tile, tileRecord.tileId);
+  } else {
+    tile.cropId = null;
+    tile.stage = FARM_STAGE_EMPTY;
+    tile.growCompleteAt = null;
+    tileRecord.plot.locked = false;
+    clearPlotGrowthTimer(tileRecord.tileId);
+  }
   saveFarmState();
   state.message = "Harvested.";
   notify();
@@ -2690,13 +3077,10 @@ export function getNextLandPlotCost() {
 }
 
 export function getFarmPlotCost(plot = {}) {
-  const ownedPlotCount = Math.max(0, state.farm.plots.length);
-  const area = getFarmPlotSize(plot).area;
-  if (ownedPlotCount === 0) {
-    return 0;
-  }
-
-  return Math.ceil(FARM_PLOT_BASE_COST * area * Math.pow(FARM_PLOT_PRICE_GROWTH, ownedPlotCount - 1));
+  const dimensions = getFarmPlotSize(plot);
+  const baseCost = FARM_PLOT_BASE_COSTS[`${dimensions.columns}x${dimensions.rows}`] || FARM_PLOT_BASE_COSTS["1x1"];
+  const purchaseCount = Math.max(0, Math.floor(Number(state.farm.plotPurchaseCount) || 0));
+  return Math.ceil(baseCost * Math.pow(FARM_PLOT_PRICE_GROWTH, purchaseCount));
 }
 
 function clearFarmPlotAnimation(plotId) {
@@ -2797,6 +3181,10 @@ function scheduleFarmPlotGrowthTimers(plot) {
 }
 
 function mergeFarmPlots(firstPlot, secondPlot, targetRect) {
+  if (firstPlot.locked || secondPlot.locked || isTreeSceneObject(firstPlot) || isTreeSceneObject(secondPlot)) {
+    return;
+  }
+
   clearFarmPlotGrowthTimers(firstPlot);
   clearFarmPlotGrowthTimers(secondPlot);
 
@@ -2819,8 +3207,16 @@ function mergeFarmPlots(firstPlot, secondPlot, targetRect) {
 }
 
 function getJoinableNeighbor(plot) {
+  if (plot.locked || isTreeSceneObject(plot)) {
+    return null;
+  }
+
   for (const otherPlot of state.farm.plots) {
     if (otherPlot.id === plot.id) {
+      continue;
+    }
+
+    if (otherPlot.locked || isTreeSceneObject(otherPlot)) {
       continue;
     }
 
@@ -2886,10 +3282,14 @@ export function moveFarmPlot(plotId, left, top) {
     return false;
   }
 
+  if (plot.locked) {
+    return false;
+  }
+
   const position = clampFarmPlotToWorkspace({ ...plot, left, top });
   plot.left = position.left;
   plot.top = position.top;
-  const didJoin = joinFarmPlotNeighbors(plot);
+  const didJoin = isTreeSceneObject(plot) ? false : joinFarmPlotNeighbors(plot);
   saveFarmPlots(state.farm.plots);
   state.message = didJoin ? "Farm plots joined." : state.message;
   notify();
@@ -2923,15 +3323,75 @@ export function spawnFarmPlot(preferredPosition = null, plotSize = {}) {
     top: plotPosition.top,
     columns: dimensions.columns,
     rows: dimensions.rows,
+    kind: "farm",
     tiles: Array.from({ length: dimensions.area }, () => createEmptyFarmPlotTile()),
     cropId: null,
     stage: FARM_STAGE_EMPTY,
     growCompleteAt: null,
+    locked: false,
   };
   state.farm.plots.push(plot);
   saveFarmState();
   markFarmPlotEntering(plot.id);
   return plot;
+}
+
+function spawnTreeSceneObject(productId, preferredPosition = null) {
+  const product = getProduct(productId);
+  const cropProduct = product?.cropProductId ? getProduct(product.cropProductId) : null;
+  if (!product?.placeOnPurchase || !cropProduct?.autoGrow) {
+    return null;
+  }
+
+  const dimensions = getSeedPlantSize(product);
+  const id = `tree-${product.id}-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const treePosition = createFarmPlotRecord(id, {
+    ...(preferredPosition || {}),
+    columns: dimensions.columns,
+    rows: dimensions.rows,
+  }, state.farm.plots);
+  const tile = createEmptyFarmPlotTile();
+  tile.cropId = product.id;
+  tile.stage = FARM_STAGE_GROWING;
+  tile.growCompleteAt = Date.now() + getPlotGrowthDurationMs(tile);
+
+  const plot = {
+    id,
+    left: treePosition.left,
+    top: treePosition.top,
+    columns: dimensions.columns,
+    rows: dimensions.rows,
+    kind: "tree",
+    tiles: Array.from({ length: dimensions.area }, (_, index) => index === 0 ? tile : createEmptyFarmPlotTile()),
+    cropId: null,
+    stage: FARM_STAGE_EMPTY,
+    growCompleteAt: null,
+    locked: false,
+  };
+
+  state.farm.plots.push(plot);
+  saveFarmState();
+  schedulePlotGrowth(tile, getFarmPlotTileId(plot.id, 0));
+  markFarmPlotEntering(plot.id);
+  return plot;
+}
+
+export function convertPlaceOnPurchaseBarnItems() {
+  let converted = false;
+  for (const [productId, quantity] of Object.entries(state.barn.items)) {
+    const product = getProduct(productId);
+    if (!product?.placeOnPurchase || quantity <= 0) {
+      continue;
+    }
+
+    delete state.barn.items[productId];
+    for (let index = 0; index < quantity; index += 1) {
+      spawnTreeSceneObject(productId);
+    }
+    converted = true;
+  }
+
+  return converted;
 }
 
 export function deleteCellByKey(key) {
@@ -2994,10 +3454,10 @@ export function deleteCellByKey(key) {
   if (key === "animalPen") {
     state.buildings.animalPen = false;
     saveFlag("animalPenBuilt", false);
-    state.animalPen = { food: {}, animals: [] };
+    state.animalPen = { food: {}, animals: [], slots: 0 };
     saveAnimalPenState(state.animalPen);
     clearAnimalPenTicker();
-    state.message = "Cow pen removed.";
+    state.message = "Animal pen removed.";
     notify();
     return true;
   }
@@ -3005,10 +3465,21 @@ export function deleteCellByKey(key) {
   if (key === "chickenCoop") {
     state.buildings.chickenCoop = false;
     saveFlag("chickenCoopBuilt", false);
-    state.chickenCoop = { food: {}, animals: [] };
+    state.chickenCoop = { food: {}, animals: [], slots: 0 };
     saveChickenCoopState(state.chickenCoop);
     clearAnimalPenTicker();
     state.message = "Chicken coop removed.";
+    notify();
+    return true;
+  }
+
+  if (key === "beehive") {
+    state.buildings.beehive = false;
+    saveFlag("beehiveBuilt", false);
+    state.beehive = { food: {}, animals: [], slots: 0 };
+    saveBeehiveState(state.beehive);
+    clearAnimalPenTicker();
+    state.message = "Beehive removed.";
     notify();
     return true;
   }
@@ -3036,6 +3507,7 @@ export function restartFarm() {
   state.cells.animalFeeder = starterLayout.animalFeeder;
   state.cells.animalPen = starterLayout.animalPen;
   state.cells.chickenCoop = starterLayout.chickenCoop;
+  state.cells.beehive = starterLayout.beehive;
   state.cells.tools = starterLayout.tools;
   saveCellPosition("farm", state.cells.farm);
   saveCellPosition("market", state.cells.market);
@@ -3050,9 +3522,11 @@ export function restartFarm() {
   saveCellPosition("animalFeeder", state.cells.animalFeeder);
   saveCellPosition("animalPen", state.cells.animalPen);
   saveCellPosition("chickenCoop", state.cells.chickenCoop);
+  saveCellPosition("beehive", state.cells.beehive);
   saveCellPosition("tools", state.cells.tools);
   state.farm.plots = createStarterFarmPlots();
   state.farm.enteringPlotIds = [];
+  state.farm.plotPurchaseCount = 0;
   for (const timerId of growthTimers.values()) {
     window.clearTimeout(timerId);
   }
@@ -3063,10 +3537,12 @@ export function restartFarm() {
   }
   clearAnimalPenTicker();
   saveFarmPlots(state.farm.plots);
+  saveNumber("farmPlotPurchases", state.farm.plotPurchaseCount);
   state.barn.items = {};
   state.bakery = { queue: [] };
-  state.animalPen = { food: {}, animals: [] };
-  state.chickenCoop = { food: {}, animals: [] };
+  state.animalPen = { food: {}, animals: [], slots: 0 };
+  state.chickenCoop = { food: {}, animals: [], slots: 0 };
+  state.beehive = { food: {}, animals: [], slots: 0 };
   state.shopping.items = {};
   state.sell.items = {};
   state.buildings.mill = false;
@@ -3074,6 +3550,7 @@ export function restartFarm() {
   state.buildings.animalFeeder = false;
   state.buildings.animalPen = false;
   state.buildings.chickenCoop = false;
+  state.buildings.beehive = false;
   resetAnimalFeederTargets();
   state.ui.hiddenCellKeys = [...DEFAULT_HIDDEN_CELL_KEYS];
   state.ui.activeTool = null;
@@ -3084,9 +3561,11 @@ export function restartFarm() {
   saveFlag("animalFeederBuilt", false);
   saveFlag("animalPenBuilt", false);
   saveFlag("chickenCoopBuilt", false);
+  saveFlag("beehiveBuilt", false);
   saveBakeryState(state.bakery);
   saveAnimalPenState(state.animalPen);
   saveChickenCoopState(state.chickenCoop);
+  saveBeehiveState(state.beehive);
   saveFlag("layoutInitialized", true);
   try {
     localStorage.setItem(STORAGE_KEYS.layoutVersion, LAYOUT_SAVE_VERSION);
@@ -3095,6 +3574,7 @@ export function restartFarm() {
   }
   state.message = "Farm restarted.";
   notify();
+  window.dispatchEvent(new CustomEvent("idle-farm-center-scene"));
 }
 
 export function addShoppingItem(productId) {
@@ -3175,7 +3655,13 @@ export function purchaseShoppingList() {
       continue;
     }
 
-    grantBarnItemSilently(productId, quantity);
+    if (product.placeOnPurchase) {
+      for (let index = 0; index < quantity; index += 1) {
+        spawnTreeSceneObject(productId);
+      }
+    } else {
+      grantBarnItemSilently(productId, quantity);
+    }
   }
 
   autoFeedAnimalPens({ shouldNotify: false });
@@ -3196,6 +3682,8 @@ export function buyLandPlot(plotSize = {}) {
 
   state.coins -= cost;
   spawnFarmPlot(null, dimensions);
+  state.farm.plotPurchaseCount = Math.max(0, Math.floor(Number(state.farm.plotPurchaseCount) || 0)) + 1;
+  saveNumber("farmPlotPurchases", state.farm.plotPurchaseCount);
   state.message = `${dimensions.columns}x${dimensions.rows} farm plot bought for ${cost} coins.`;
   notify();
   return true;
@@ -3213,6 +3701,10 @@ export function getPlotDisplayLabel(plot) {
 export function getPlotStatusLabel(plot) {
   if (!plot || !plot.cropId) {
     return "";
+  }
+
+  if (isPerennialCropId(plot.cropId) && plot.stage === FARM_STAGE_PLANTED) {
+    return "growing";
   }
 
   if (plot.stage === FARM_STAGE_PLANTED) {

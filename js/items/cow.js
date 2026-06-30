@@ -6,7 +6,7 @@ const animal = {
   icon: "🐄",
   marketName: "Cow",
   inventoryName: "Cow",
-  price: 55,
+  price: 450,
   sellPrice: 7,
   outputProductId: milk.id,
   penBuildingId: "animalPen",

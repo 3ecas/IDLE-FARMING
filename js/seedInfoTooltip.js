@@ -26,14 +26,39 @@ function formatProductMap(items) {
 }
 
 function formatYield(product) {
-  const min = Number.isFinite(product?.productionYieldMin) ? product.productionYieldMin : 1;
-  const max = Number.isFinite(product?.productionYieldMax) ? product.productionYieldMax : min;
+  const min = Number.isFinite(product?.productionYieldMin)
+    ? product.productionYieldMin
+    : Number.isFinite(product?.harvestYieldMin)
+      ? product.harvestYieldMin
+      : Number.isFinite(product?.harvestYield)
+        ? product.harvestYield
+        : 1;
+  const max = Number.isFinite(product?.productionYieldMax)
+    ? product.productionYieldMax
+    : Number.isFinite(product?.harvestYieldMax)
+      ? product.harvestYieldMax
+      : Number.isFinite(product?.harvestYield)
+        ? product.harvestYield
+        : min;
   return max > min ? `${min}-${max}` : `${min}`;
+}
+
+function formatProductionDrops(product) {
+  const drops = [`${formatYield(product)} ${product?.marketName || "Product"}`];
+
+  if (product?.productionDrops && typeof product.productionDrops === "object") {
+    for (const [productId, quantity] of Object.entries(product.productionDrops)) {
+      const dropProduct = getProduct(productId);
+      drops.push(`${quantity} ${dropProduct?.marketName || "Item"}`);
+    }
+  }
+
+  return drops.join(", ");
 }
 
 function getCropDropText(seed, crop) {
   const drops = [];
-  const mainQuantity = Number.isFinite(crop?.harvestYield) ? crop.harvestYield : 1;
+  const mainQuantity = formatYield(crop);
   drops.push(`${mainQuantity} ${crop?.marketName || seed.marketName}`);
 
   if (crop?.harvestDrops && typeof crop.harvestDrops === "object") {
@@ -106,7 +131,7 @@ function getAnimalRows(product) {
     { label: "Price", value: product.price },
     { label: "Produces", value: output?.marketName || "-" },
     { label: "Production time", value: formatDuration(output?.productionDurationMs) },
-    { label: "Drop", value: output ? `${formatYield(output)} ${output.marketName}` : "-" },
+    { label: "Drop", value: output ? formatProductionDrops(output) : "-" },
     { label: "Food", value: formatProductMap(output?.foodCost) },
   ];
 }
@@ -124,7 +149,7 @@ function getProcessedRows(product) {
     { label: "Sell Price", value: getProductSellPrice(product.id) },
     { label: "Production time", value: Number.isFinite(product.productionDurationMs) ? formatDuration(product.productionDurationMs) : "" },
     { label: "Bake time", value: Number.isFinite(product.bakeDurationMs) ? formatDuration(product.bakeDurationMs) : "" },
-    { label: "Drop", value: Number.isFinite(product.productionYieldMin) || Number.isFinite(product.productionYieldMax) ? `${formatYield(product)} ${product.marketName}` : "" },
+    { label: "Drop", value: Number.isFinite(product.productionYieldMin) || Number.isFinite(product.productionYieldMax) ? formatProductionDrops(product) : "" },
     { label: "Food", value: product.foodCost ? formatProductMap(product.foodCost) : "" },
     { label: "Ingredients", value: ingredients ? formatProductMap(ingredients) : "" },
   ];

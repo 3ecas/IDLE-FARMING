@@ -1,7 +1,9 @@
 import { mountPlot } from "./plot.js";
 import { mountAnimalFeeder } from "./animalFeeder.js";
+import { mountAnimalWanderers } from "./animalWanderers.js";
 import { mountAnimalPen } from "./animalPen.js";
 import { mountBakery } from "./bakery.js";
+import { mountBeehive } from "./beehive.js";
 import { mountChickenCoop } from "./chickenCoop.js";
 import { mountMill } from "./mill.js";
 import { mountFarmCursors } from "./cursor.js";
@@ -9,17 +11,18 @@ import { bootstrapGamePersistence } from "./persistence.js";
 import { clearSelectedInventoryItem } from "./inventory.js";
 import { mountInfoPanel } from "./infoPanel.js";
 import { mountSidePanels } from "./sidePanels.js";
-import { mountSceneCamera } from "./sceneCamera.js";
-import { onStateChange, restartFarm, showCell, stabilizeLayoutPositions, state } from "./state.js";
+import { mountSceneCamera } from "./sceneCamera.js?v=3";
+import { onStateChange, showCell, stabilizeLayoutPositions, state } from "./state.js";
 
 const statusRoot = document.getElementById("status");
+const workspace = document.getElementById("workspace");
 const cellMount = document.getElementById("cell-mount");
 const millMount = document.getElementById("mill-mount");
 const bakeryMount = document.getElementById("bakery-mount");
 const animalFeederMount = document.getElementById("animal-feeder-mount");
 const animalPenMount = document.getElementById("animal-pen-mount");
 const chickenCoopMount = document.getElementById("chicken-coop-mount");
-const restartButton = document.querySelector("[data-restart-farm]");
+const beehiveMount = document.getElementById("beehive-mount");
 
 function renderStatus() {
   statusRoot.textContent = state.message;
@@ -32,6 +35,8 @@ mountBakery(bakeryMount);
 mountAnimalFeeder(animalFeederMount);
 mountAnimalPen(animalPenMount);
 mountChickenCoop(chickenCoopMount);
+mountBeehive(beehiveMount);
+mountAnimalWanderers(workspace);
 mountInfoPanel();
 mountSidePanels();
 mountFarmCursors();
@@ -50,9 +55,3 @@ document.addEventListener("pointerdown", (event) => {
     clearSelectedInventoryItem();
   }
 }, { capture: true });
-
-if (restartButton) {
-  restartButton.addEventListener("click", () => {
-    restartFarm();
-  });
-}

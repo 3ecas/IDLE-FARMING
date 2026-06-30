@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Idle Farm</title>
     <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="js/farmPage.js"></script>
+    <script type="module" src="js/farmPage.js?v=3"></script>
   </head>
   <body>
     <main class="scene farm-page">
@@ -17,25 +17,11 @@
         <div id="animal-feeder-mount" class="cell-mount"></div>
         <div id="animal-pen-mount" class="cell-mount"></div>
         <div id="chicken-coop-mount" class="cell-mount"></div>
-      </section>
-      <section class="top-info-panel" data-top-info-panel aria-label="Info panel">
-        <div class="day-night-cell" data-day-night-cell>
-          <span class="day-night-icon" aria-hidden="true">☀</span>
-          <span class="day-night-track" aria-hidden="true">
-            <span class="day-night-fill" data-day-night-fill></span>
-          </span>
-          <span class="day-night-icon" aria-hidden="true">☾</span>
-        </div>
-        <div class="top-money-cell" data-top-money-cell>
-          <span class="money-coin" aria-hidden="true"></span>
-          <span class="money-value" data-top-money-value>0</span>
-          <button type="button" class="top-money-add" data-add-coins aria-label="Add 100 coins">+</button>
-        </div>
+        <div id="beehive-mount" class="cell-mount"></div>
       </section>
       <nav class="side-tabs" data-side-tabs aria-label="Main menu">
-        <button type="button" class="side-tab" data-side-tab="dashboard">
-          <span class="side-tab__icon" aria-hidden="true">▣</span>
-          <span>Dashboard</span>
+        <button type="button" class="side-tab" data-side-tab="dashboard" aria-label="Dashboard">
+          <span class="side-tab__icon" aria-hidden="true">☰</span>
         </button>
       </nav>
       <aside class="side-panel-shell" data-side-panel aria-hidden="true">
@@ -47,7 +33,6 @@
         </section>
       </aside>
       <div class="farm-controls">
-        <button type="button" class="restart-farm" data-restart-farm>Restart farm</button>
         <div class="delete-zone" data-delete-zone>Delete</div>
       </div>
       <div id="status" class="status"></div>

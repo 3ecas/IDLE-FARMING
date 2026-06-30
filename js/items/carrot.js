@@ -4,7 +4,7 @@ const seed = {
   icon: "🥕",
   marketName: "Carrot",
   inventoryName: "Carrot seed",
-  price: 2,
+  price: 5,
   cropProductId: "carrotCrop",
 };
 
@@ -15,8 +15,8 @@ const crop = {
   marketName: "Carrot",
   inventoryName: "Carrot",
   price: 0,
-  sellPrice: 2,
-  growDurationMs: 66000,
+  sellPrice: 5,
+  growDurationMs: 75000,
   harvestYield: 3,
 };
 

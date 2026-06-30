@@ -45,6 +45,12 @@ function getPlotTileIdFromPointer(event, cell) {
   }
 
   const plotSize = getFarmPlotSize(plot);
+  const tiles = getRenderTiles(plot, plotSize);
+  const perennialTileIndex = getPerennialTileIndex(tiles);
+  if (perennialTileIndex !== -1) {
+    return getFarmPlotTileId(plot.id, perennialTileIndex);
+  }
+
   const rect = cell.getBoundingClientRect();
   const tileWidth = rect.width / plotSize.columns;
   const tileHeight = rect.height / plotSize.rows;
@@ -99,8 +105,14 @@ function getHarvestDropText(plot) {
   }
 
   const drops = [];
-  const harvestQuantity = Number.isFinite(cropProduct.harvestYield) ? cropProduct.harvestYield : 1;
-  drops.push(`${harvestQuantity} ${cropProduct.marketName || cropProduct.inventoryName || "Crop"}`);
+  const harvestQuantity = Number.isFinite(cropProduct.harvestYieldMin)
+    ? cropProduct.harvestYieldMin
+    : Number.isFinite(cropProduct.harvestYield)
+      ? cropProduct.harvestYield
+      : 1;
+  const harvestMaximum = Number.isFinite(cropProduct.harvestYieldMax) ? cropProduct.harvestYieldMax : harvestQuantity;
+  const harvestLabel = harvestMaximum > harvestQuantity ? `${harvestQuantity}-${harvestMaximum}` : `${harvestQuantity}`;
+  drops.push(`${harvestLabel} ${cropProduct.marketName || cropProduct.inventoryName || "Crop"}`);
 
   if (cropProduct.harvestDrops && typeof cropProduct.harvestDrops === "object") {
     for (const [productId, quantity] of Object.entries(cropProduct.harvestDrops)) {
@@ -116,8 +128,12 @@ function getPlotTooltipRows(plot) {
     return [{ label: "State", value: "Plant seed" }];
   }
 
+  const plantedProduct = getProduct(plot.cropId);
+  const cropProduct = plantedProduct?.cropProductId ? getProduct(plantedProduct.cropProductId) : plantedProduct;
+  const isPerennial = Boolean(cropProduct?.autoGrow || cropProduct?.repeatHarvest);
+
   if (plot.stage === "planted") {
-    return [{ label: "State", value: "Needs water" }];
+    return [{ label: "State", value: isPerennial ? "Growing" : "Needs water" }];
   }
 
   if (plot.stage === "growing") {
@@ -179,6 +195,22 @@ function getPlotGlyph(plot) {
   const plantedProduct = getProduct(plot.cropId);
   const cropProduct = plantedProduct?.cropProductId ? getProduct(plantedProduct.cropProductId) : plantedProduct;
   return cropProduct?.icon || plantedProduct?.icon || "";
+}
+
+function isPerennialTile(tile) {
+  const plantedProduct = getProduct(tile?.cropId);
+  const cropProduct = plantedProduct?.cropProductId ? getProduct(plantedProduct.cropProductId) : plantedProduct;
+  return Boolean(cropProduct?.autoGrow || cropProduct?.repeatHarvest);
+}
+
+function getRenderTiles(plot, plotSize = getFarmPlotSize(plot)) {
+  return Array.isArray(plot.tiles) && plot.tiles.length === plotSize.area
+    ? plot.tiles
+    : Array.from({ length: plotSize.area }, () => ({ cropId: null, stage: "empty", growCompleteAt: null }));
+}
+
+function getPerennialTileIndex(tiles) {
+  return tiles.findIndex((tile) => isPerennialTile(tile));
 }
 
 function getAvailableSeedEntries() {
@@ -298,6 +330,10 @@ export function mountPlot(container) {
   mountMovableCell(container, {
     key: "farm-plot",
     selector: "[data-farm-cell]",
+    canDrag: (cell) => {
+      const plot = state.farm.plots.find((entry) => entry.id === cell.dataset.cellKey);
+      return !plot?.locked;
+    },
     onDrop: (dragSnapshot, finalPosition) => {
       moveFarmPlot(dragSnapshot.key, finalPosition.left, finalPosition.top);
       return true;
@@ -405,22 +441,26 @@ export function mountPlot(container) {
           const plotSize = getFarmPlotSize(plot);
           const position = clampToWorkspace(workspace, plot.left, plot.top, plotSize);
           const isEntering = state.farm.enteringPlotIds.includes(plot.id);
+          const isLocked = Boolean(plot.locked);
           const hasGrid = plotSize.area > 1;
-          const tiles = Array.isArray(plot.tiles) && plot.tiles.length === plotSize.area
-            ? plot.tiles
-            : Array.from({ length: plotSize.area }, () => ({ cropId: null, stage: "empty", growCompleteAt: null }));
+          const tiles = getRenderTiles(plot, plotSize);
+          const perennialTileIndex = getPerennialTileIndex(tiles);
+          const isTreePlot = perennialTileIndex !== -1;
+          const tileEntries = isTreePlot
+            ? [{ tile: tiles[perennialTileIndex], tileIndex: perennialTileIndex, isTree: true }]
+            : tiles.map((tile, tileIndex) => ({ tile, tileIndex, isTree: false }));
           const ariaLabel = `${plotSize.columns} by ${plotSize.rows} land plot`;
 
           return `
             <div
-              class="farm-cell ${hasGrid ? "farm-cell--grid" : ""} ${isEntering ? "is-entering" : ""}"
+              class="farm-cell ${hasGrid ? "farm-cell--grid" : ""} ${isEntering ? "is-entering" : ""} ${isLocked ? "farm-cell--locked" : ""} ${isTreePlot ? "farm-cell--tree" : ""}"
               data-cell-key="${plot.id}"
               data-farm-cell
               style="left:${position.left}px; top:${position.top}px; width:${plotSize.width}px; height:${plotSize.height}px; --plot-columns:${plotSize.columns}; --plot-rows:${plotSize.rows};"
               role="grid"
               aria-label="${ariaLabel}"
             >
-              ${tiles.map((tile, tileIndex) => {
+              ${tileEntries.map(({ tile, tileIndex, isTree }) => {
                 const tileId = getFarmPlotTileId(plot.id, tileIndex);
                 const stage = tile.stage || "empty";
                 const nameLabel = getPlotDisplayLabel(tile);
@@ -430,7 +470,7 @@ export function mountPlot(container) {
                 return `
                   <button
                     type="button"
-                    class="farm-plot-tile farm-plot-tile--${stage}"
+                    class="farm-plot-tile farm-plot-tile--${stage} ${isTree ? "farm-plot-tile--tree" : ""}"
                     data-plot-tile-id="${tileId}"
                     data-stage="${stage}"
                     role="gridcell"
