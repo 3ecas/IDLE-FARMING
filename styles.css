@@ -141,12 +141,13 @@ body.is-night .grid-overlay {
 .top-info-panel {
   position: fixed;
   z-index: 3300;
-  left: 14px;
+  left: 50%;
   top: 14px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   pointer-events: auto;
+  transform: translateX(-50%);
 }
 
 .day-night-cell,
@@ -3785,6 +3786,23 @@ button.inventory-item.is-dragging:not(.inventory-item--ghost) {
   font-size: 0.74rem;
   font-weight: 700;
   transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.shopping-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 0;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.shopping-summary__total {
+  margin-left: auto;
+  text-align: right;
 }
 
 .shopping-purchase:hover,

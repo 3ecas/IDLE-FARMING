@@ -51,7 +51,6 @@ const PANEL_TITLES = {
   dashboard: "Dashboard",
 };
 const DASHBOARD_SECTIONS = [
-  { key: "overview", label: "Overview", icon: "▣" },
   { key: "barn", label: "Barn", icon: "📦" },
   { key: "shop", label: "Shop", icon: "🛒" },
   { key: "market", label: "Market", icon: "⚖" },
@@ -91,7 +90,7 @@ const BARN_SORTS = [
 ];
 
 let activePanel = null;
-let activeDashboardSection = "overview";
+let activeDashboardSection = "barn";
 let activeDashboardBarnSection = null;
 let activeDashboardShopSection = null;
 let activeDashboardBuildSection = null;
@@ -364,7 +363,6 @@ function getFarmOverviewStats() {
     planted: plantedTiles.length,
     ready: tiles.filter((tile) => tile.stage === "mature").length,
     trees: plots.filter((plot) => plot.kind === "tree").length,
-    phase: document.body.classList.contains("is-night") ? "Night" : "Day",
   };
 }
 
@@ -617,7 +615,7 @@ function renderBarnSendToMarketDropZone() {
 function renderShoppingList() {
   const entries = getShoppingEntries();
   const total = getShoppingListTotal();
-  const remainingCoins = Math.max(0, state.coins - total);
+  const itemCount = entries.reduce((sum, entry) => sum + entry.quantity, 0);
   const body = entries.length > 0
     ? `
       <div class="page-list">
@@ -646,7 +644,11 @@ function renderShoppingList() {
           `)
           .join("")}
       </div>
-      <button type="button" class="shopping-purchase" data-shop-purchase>Purchase ${total} | ${remainingCoins} left</button>
+      <div class="shopping-summary" aria-label="Shopping summary">
+        <span class="shopping-summary__count">${itemCount} item${itemCount === 1 ? "" : "s"}</span>
+        <span class="shopping-summary__total">${total} coins total</span>
+      </div>
+      <button type="button" class="shopping-purchase" data-shop-purchase>Purchase</button>
     `
     : renderEmpty("Basket empty");
 
@@ -958,13 +960,6 @@ function renderDashboardOverview() {
   return `
     <div class="dashboard-overview">
       <div class="dashboard-overview-info" aria-label="Farm status">
-        <div class="day-night-cell dashboard-day-night-cell" data-day-night-cell>
-          <span class="day-night-icon" aria-hidden="true">☀</span>
-          <span class="day-night-track" aria-hidden="true">
-            <span class="day-night-fill" data-day-night-fill></span>
-          </span>
-          <span class="day-night-icon" aria-hidden="true">☾</span>
-        </div>
         <div class="top-money-cell dashboard-money-cell" data-top-money-cell>
           <span class="money-coin" aria-hidden="true"></span>
           <span class="money-value" data-top-money-value>${state.coins}</span>
@@ -978,7 +973,6 @@ function renderDashboardOverview() {
           { label: "Planted", value: `${farm.planted}` },
           { label: "Ready", value: `${farm.ready}` },
           { label: "Trees", value: `${farm.trees}` },
-          { label: "Phase", value: `<span data-cycle-phase>${farm.phase}</span>` },
         ])}
         ${renderOverviewCard("Inventory", "📦", [
           { label: "Stacks", value: `${inventory.stacks}` },
@@ -1020,10 +1014,6 @@ function renderDashboardOverview() {
 }
 
 function renderDashboardSection(sectionKey) {
-  if (sectionKey === "overview") {
-    return renderDashboardOverview();
-  }
-
   if (sectionKey === "barn") {
     return renderBarnPanel();
   }
@@ -1040,7 +1030,7 @@ function renderDashboardSection(sectionKey) {
     return renderBuildPanel();
   }
 
-  return renderDashboardOverview();
+  return renderBarnPanel();
 }
 
 function renderDashboardCategorySubmenu(sectionKey) {
@@ -1201,7 +1191,7 @@ function renderActivePanel(panelRoot, contentRoot, titleRoot, tabRoot) {
   }
 }
 
-export function openDashboardSection(sectionKey = "overview") {
+export function openDashboardSection(sectionKey = "barn") {
   const tabRoot = document.querySelector("[data-side-tabs]");
   const panelRoot = document.querySelector("[data-side-panel]");
   const contentRoot = document.querySelector("[data-side-panel-content]");
